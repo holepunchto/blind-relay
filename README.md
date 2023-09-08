@@ -1,0 +1,25 @@
+# Protomux bridging relay
+
+Bridging relay for [UDX](https://github.com/holepunchto/udx-native) over [Protomux](https://github.com/mafintosh/protomux) channels.
+
+```sh
+npm i protomux-bridging-relay
+```
+
+## Protocol
+
+### Messages
+
+All types are specified as their corresponding [compact-encoding](https://github.com/compact-encoding) codec.
+
+#### `pair` (`0`)
+
+1.  `bitfield(1)` Flags.
+    1. `isInitiator`
+2.  `fixed32` Preexchanged bridging token.
+3.  `uint` Stream ID of the sender.
+4.  `uint` Initial stream sequence no. of the sender.
+
+## License
+
+Apache-2.0
