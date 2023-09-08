@@ -32,6 +32,6 @@ exports.withClient = function withClient (t, server) {
   server.accept(serverStream)
 
   const client = new relay.Client(clientStream)
-  t.teardown(() => client.close())
+  t.teardown(() => client.destroy())
   return client
 }

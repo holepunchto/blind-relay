@@ -1,3 +1,4 @@
+const EventEmitter = require('events')
 const Protomux = require('protomux')
 const { Readable } = require('streamx')
 const sodium = require('sodium-universal')
@@ -22,12 +23,8 @@ exports.Server = class BridgingRelayServer {
     return this._sessions[Symbol.iterator]()
   }
 
-  accept (stream, opts = {}) {
-    const {
-      id
-    } = opts
-
-    const session = new BridgingRelaySession(this, stream, id)
+  accept (stream, opts) {
+    const session = new BridgingRelaySession(this, stream, opts)
 
     this._sessions.add(session)
 
@@ -38,21 +35,33 @@ exports.Server = class BridgingRelayServer {
 
   close () {
     for (const session of this._sessions) {
-      session.close()
+      session.destroy()
     }
+
+    this._sessions.clear()
   }
 }
 
-class BridgingRelaySession {
-  constructor (server, stream, id) {
+class BridgingRelaySession extends EventEmitter {
+  constructor (server, stream, opts = {}) {
+    super()
+
+    const {
+      id,
+      handshake,
+      handshakeEncoding
+    } = opts
+
     this._server = server
     this._mux = Protomux.from(stream)
 
     this._channel = this._mux.createChannel({
       protocol: 'protomux-bridging-relay',
       id,
+      handshake: handshake ? handshakeEncoding || c.raw : null,
       onopen: this._onopen.bind(this),
-      onclose: this._onclose.bind(this)
+      onclose: this._onclose.bind(this),
+      ondestroy: this._ondestroy.bind(this)
     })
 
     this._pair = this._channel.addMessage({
@@ -60,19 +69,32 @@ class BridgingRelaySession {
       onmessage: this._onpair.bind(this)
     })
 
+    this._error = null
     this._streams = new Set()
 
-    this._channel.open()
+    this._channel.open(handshake)
   }
 
-  _onopen () {}
+  _onopen () {
+    this.emit('open')
+  }
 
   _onclose () {
+    const err = this._error || errors.CHANNEL_CLOSED()
+
     for (const stream of this._streams) {
-      stream.destroy()
+      stream.destroy(err)
     }
 
+    this._streams.clear()
+
     this._server._sessions.delete(this)
+
+    this.emit('close')
+  }
+
+  _ondestroy () {
+    this.emit('destroy')
   }
 
   _onpair ({ isInitiator, token, id: remoteId }) {
@@ -125,7 +147,8 @@ class BridgingRelaySession {
     }
   }
 
-  close () {
+  destroy (err) {
+    this._error = err || errors.CHANNEL_DESTROYED()
     this._channel.close()
   }
 }
@@ -144,7 +167,7 @@ class BridgingRelaySessionPair {
   }
 }
 
-exports.Client = class BridgingRelayClient {
+exports.Client = class BridgingRelayClient extends EventEmitter {
   static _clients = new WeakMap()
 
   static from (stream, opts) {
@@ -156,8 +179,12 @@ exports.Client = class BridgingRelayClient {
   }
 
   constructor (stream, opts = {}) {
+    super()
+
     const {
-      id
+      id,
+      handshake,
+      handshakeEncoding
     } = opts
 
     this._mux = Protomux.from(stream)
@@ -165,8 +192,10 @@ exports.Client = class BridgingRelayClient {
     this._channel = this._mux.createChannel({
       protocol: 'protomux-bridging-relay',
       id,
+      handshake: handshake ? handshakeEncoding || c.raw : null,
       onopen: this._onopen.bind(this),
-      onclose: this._onclose.bind(this)
+      onclose: this._onclose.bind(this),
+      ondestroy: this._ondestroy.bind(this)
     })
 
     this._pair = this._channel.addMessage({
@@ -174,9 +203,10 @@ exports.Client = class BridgingRelayClient {
       onmessage: this._onpair.bind(this)
     })
 
-    this._channel.open()
-
+    this._error = null
     this._requests = new Map()
+
+    this._channel.open(handshake)
   }
 
   get stream () {
@@ -187,14 +217,24 @@ exports.Client = class BridgingRelayClient {
     return this._requests.values()
   }
 
-  _onopen () {}
+  _onopen () {
+    this.emit('open')
+  }
 
   _onclose () {
-    for (const request of this._requests) {
-      request.destroy(errors.CHANNEL_CLOSED())
+    const err = this._error || errors.CHANNEL_CLOSED()
+
+    for (const request of this._requests.values()) {
+      request.destroy(err)
     }
 
+    this._requests.clear()
+
     this.constructor._clients.delete(this.stream)
+  }
+
+  _ondestroy () {
+    this.emit('destroy')
   }
 
   _onpair ({ isInitiator, token, id: remoteId }) {
@@ -220,7 +260,8 @@ exports.Client = class BridgingRelayClient {
     return request
   }
 
-  close () {
+  destroy (err) {
+    this._error = err || errors.CHANNEL_DESTROYED()
     this._channel.close()
   }
 }
