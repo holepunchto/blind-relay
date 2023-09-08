@@ -15,7 +15,7 @@ exports.Server = class BridgingRelayServer {
     } = opts
 
     this._createStream = createStream
-    this._pairs = new Map()
+    this._pairing = new Map()
     this._sessions = new Set()
   }
 
@@ -38,7 +38,7 @@ exports.Server = class BridgingRelayServer {
       session.destroy()
     }
 
-    this._pairs.clear()
+    this._pairing.clear()
     this._sessions.clear()
   }
 }
@@ -76,7 +76,7 @@ class BridgingRelaySession extends EventEmitter {
     })
 
     this._error = null
-    this._pairs = new Set()
+    this._pairing = new Set()
     this._streams = new Map()
 
     this._channel.open(handshake)
@@ -89,15 +89,15 @@ class BridgingRelaySession extends EventEmitter {
   _onclose () {
     const err = this._error || errors.CHANNEL_CLOSED()
 
-    for (const pair of this._pairs) {
-      this._server._pairs.delete(pair.token.toString('hex'))
+    for (const pair of this._pairing) {
+      this._server._pairing.delete(pair.token.toString('hex'))
     }
 
     for (const stream of this._streams.values()) {
       stream.destroy(err)
     }
 
-    this._pairs.clear()
+    this._pairing.clear()
     this._streams.clear()
 
     this._server._sessions.delete(this)
@@ -112,14 +112,14 @@ class BridgingRelaySession extends EventEmitter {
   _onpair ({ isInitiator, token, id: remoteId }) {
     const keyString = token.toString('hex')
 
-    let pair = this._server._pairs.get(keyString)
+    let pair = this._server._pairing.get(keyString)
 
     if (pair === undefined) {
       pair = new BridgingRelaySessionPair(token)
-      this._server._pairs.set(keyString, pair)
+      this._server._pairing.set(keyString, pair)
     } else if (pair.sessions[+isInitiator]) return
 
-    this._pairs.add(pair)
+    this._pairing.add(pair)
 
     pair.sessions[+isInitiator] = {
       self: this,
@@ -129,7 +129,7 @@ class BridgingRelaySession extends EventEmitter {
     }
 
     if (pair.paired) {
-      this._server._pairs.delete(keyString)
+      this._server._pairing.delete(keyString)
 
       for (const session of pair.sessions) {
         const remoteId = session.remoteId
@@ -150,7 +150,7 @@ class BridgingRelaySession extends EventEmitter {
           .on('close', () => session._streams.delete(stream))
           .relayTo(remote.stream)
 
-        session._pairs.delete(pair)
+        session._pairing.delete(pair)
         session._streams.set(keyString, stream)
 
         session._pair.send({
@@ -166,14 +166,14 @@ class BridgingRelaySession extends EventEmitter {
   _onunpair ({ token }) {
     const keyString = token.toString('hex')
 
-    const pair = this._server._pairs.get(keyString)
+    const pair = this._server._pairing.get(keyString)
 
     if (pair) {
       for (const session of pair.sessions) {
-        if (session) session.self._pairs.delete(pair)
+        if (session) session.self._pairing.delete(pair)
       }
 
-      return this._server._pairs.delete(keyString)
+      return this._server._pairing.delete(keyString)
     }
 
     const stream = this._streams.get(keyString)
