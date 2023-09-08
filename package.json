@@ -31,6 +31,7 @@
   },
   "devDependencies": {
     "brittle": "^3.2.1",
+    "hyperdht": "^6.6.1",
     "standard": "^17.0.0",
     "udx-native": "^1.6.1"
   }

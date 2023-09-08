@@ -28,7 +28,7 @@ exports.Server = class BridgingRelayServer {
 
     this._sessions.add(session)
 
-    stream.on('close', () => session.close())
+    stream.on('close', () => session.destroy())
 
     return session
   }
