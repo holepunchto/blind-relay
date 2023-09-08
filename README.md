@@ -20,6 +20,11 @@ All types are specified as their corresponding [compact-encoding](https://github
 3.  `uint` Stream ID of the sender.
 4.  `uint` Initial stream sequence no. of the sender.
 
+#### `unpair` (`1`)
+
+1.  `bitfield(1)` Flags, reserved.
+2.  `fixed32` Preexchanged bridging token.
+
 ## License
 
 Apache-2.0

@@ -38,6 +38,7 @@ exports.Server = class BridgingRelayServer {
       session.destroy()
     }
 
+    this._pairs.clear()
     this._sessions.clear()
   }
 }
@@ -69,8 +70,14 @@ class BridgingRelaySession extends EventEmitter {
       onmessage: this._onpair.bind(this)
     })
 
+    this._unpair = this._channel.addMessage({
+      encoding: m.unpair,
+      onmessage: this._onunpair.bind(this)
+    })
+
     this._error = null
-    this._streams = new Set()
+    this._pairs = new Set()
+    this._streams = new Map()
 
     this._channel.open(handshake)
   }
@@ -82,10 +89,15 @@ class BridgingRelaySession extends EventEmitter {
   _onclose () {
     const err = this._error || errors.CHANNEL_CLOSED()
 
-    for (const stream of this._streams) {
+    for (const pair of this._pairs) {
+      this._server._pairs.delete(pair.token.toString('hex'))
+    }
+
+    for (const stream of this._streams.values()) {
       stream.destroy(err)
     }
 
+    this._pairs.clear()
     this._streams.clear()
 
     this._server._sessions.delete(this)
@@ -103,12 +115,14 @@ class BridgingRelaySession extends EventEmitter {
     let pair = this._server._pairs.get(keyString)
 
     if (pair === undefined) {
-      pair = new BridgingRelaySessionPair()
+      pair = new BridgingRelaySessionPair(token)
       this._server._pairs.set(keyString, pair)
-    }
+    } else if (pair.sessions[+isInitiator]) return
+
+    this._pairs.add(pair)
 
     pair.sessions[+isInitiator] = {
-      session: this,
+      self: this,
       isInitiator,
       remoteId,
       stream: null
@@ -128,14 +142,16 @@ class BridgingRelaySession extends EventEmitter {
         })
       }
 
-      for (const { isInitiator, session, stream } of pair.sessions) {
-        stream.relayTo(pair.remote(isInitiator).stream)
-
-        session._streams.add(stream)
+      for (const { isInitiator, self: session, stream } of pair.sessions) {
+        const remote = pair.remote(isInitiator)
 
         stream
           .on('error', () => { /* TODO */ })
           .on('close', () => session._streams.delete(stream))
+          .relayTo(remote.stream)
+
+        session._pairs.delete(pair)
+        session._streams.set(keyString, stream)
 
         session._pair.send({
           isInitiator,
@@ -147,6 +163,28 @@ class BridgingRelaySession extends EventEmitter {
     }
   }
 
+  _onunpair ({ token }) {
+    const keyString = token.toString('hex')
+
+    const pair = this._server._pairs.get(keyString)
+
+    if (pair) {
+      for (const session of pair.sessions) {
+        if (session) session.self._pairs.delete(pair)
+      }
+
+      return this._server._pairs.delete(keyString)
+    }
+
+    const stream = this._streams.get(keyString)
+
+    if (stream) {
+      stream.destroy()
+
+      this._streams.delete(keyString)
+    }
+  }
+
   destroy (err) {
     this._error = err || errors.CHANNEL_DESTROYED()
     this._channel.close()
@@ -154,7 +192,8 @@ class BridgingRelaySession extends EventEmitter {
 }
 
 class BridgingRelaySessionPair {
-  constructor () {
+  constructor (token) {
+    this.token = token
     this.sessions = [null, null]
   }
 
@@ -201,6 +240,10 @@ exports.Client = class BridgingRelayClient extends EventEmitter {
     this._pair = this._channel.addMessage({
       encoding: m.pair,
       onmessage: this._onpair.bind(this)
+    })
+
+    this._unpair = this._channel.addMessage({
+      encoding: m.unpair
     })
 
     this._error = null
@@ -258,6 +301,16 @@ exports.Client = class BridgingRelayClient extends EventEmitter {
     request.on('close', () => this._requests.delete(keyString))
 
     return request
+  }
+
+  unpair (token) {
+    const keyString = token.toString('hex')
+
+    const request = this._requests.get(keyString)
+
+    if (request) request.destroy(errors.PAIRING_CANCELLED())
+
+    this._unpair.send({ token })
   }
 
   destroy (err) {
@@ -318,6 +371,24 @@ m.pair = {
       token: c.fixed32.decode(state),
       id: c.uint.decode(state),
       seq: c.uint.decode(state)
+    }
+  }
+}
+
+m.unpair = {
+  preencode (state, m) {
+    flags.preencode(state)
+    c.fixed32.preencode(state, m.token)
+  },
+  encode (state, m) {
+    flags.encode(state, bits.of())
+    c.fixed32.encode(state, m.token)
+  },
+  decode (state) {
+    flags.decode(state)
+
+    return {
+      token: c.fixed32.decode(state)
     }
   }
 }

@@ -5,7 +5,7 @@ import relay from './index.js'
 import { withSocket, withServer, withClient } from './test/helpers.js'
 
 test('basic', (t) => {
-  t.plan(4)
+  t.plan(6)
 
   const udx = new UDX()
   const socket = withSocket(t, udx)
@@ -28,6 +28,7 @@ test('basic', (t) => {
 
         request.stream
           .on('error', () => {})
+          .on('close', () => t.pass('stream closed'))
           .on('data', (data) => t.alike(data.toString(), 'initiatee'))
           .connect(socket, remoteId, socket.address().port)
 
@@ -47,6 +48,7 @@ test('basic', (t) => {
 
         request.stream
           .on('error', () => {})
+          .on('close', () => t.pass('stream closed'))
           .on('data', (data) => t.alike(data.toString(), 'initiator'))
           .connect(socket, remoteId, socket.address().port)
 
