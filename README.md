@@ -1,6 +1,6 @@
 # Protomux bridging relay
 
-Bridging relay for [UDX](https://github.com/holepunchto/udx-native) over [Protomux](https://github.com/mafintosh/protomux) channels.
+Bridging relay for [UDX](https://github.com/holepunchto/udx-native) over [Protomux](https://github.com/mafintosh/protomux) channels. By acting as a bridge relay, a host may accept pairing requests from other hosts and relay UDX stream messages between them, similar to Traversal Using Relays around NAT (TURN).
 
 ```sh
 npm i protomux-bridging-relay
