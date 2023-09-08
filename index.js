@@ -179,7 +179,7 @@ class BridgingRelaySession extends EventEmitter {
     const stream = this._streams.get(keyString)
 
     if (stream) {
-      stream.destroy()
+      stream.destroy(errors.PAIRING_CANCELLED())
 
       this._streams.delete(keyString)
     }
