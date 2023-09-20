@@ -30,18 +30,19 @@ exports.Server = class BridgingRelayServer extends EventEmitter {
 
     this._sessions.add(session)
 
-    stream.on('close', () => session.destroy())
-
     return session
   }
 
-  close () {
+  async close () {
+    const ending = []
+
     for (const session of this._sessions) {
-      session.destroy()
+      ending.push(session.end())
     }
 
+    await Promise.all(ending)
+
     this._pairing.clear()
-    this._sessions.clear()
   }
 }
 
@@ -77,6 +78,7 @@ class BridgingRelaySession extends EventEmitter {
       onmessage: this._onunpair.bind(this)
     })
 
+    this._ending = null
     this._destroyed = false
     this._error = null
     this._pairing = new Set()
@@ -85,11 +87,25 @@ class BridgingRelaySession extends EventEmitter {
     this._channel.open(handshake)
   }
 
+  get closed () {
+    return this._channel.closed
+  }
+
+  get mux () {
+    return this._mux
+  }
+
+  get stream () {
+    return this._mux.stream
+  }
+
   _onopen () {
     this.emit('open')
   }
 
   _onclose () {
+    this._ending = Promise.resolve()
+
     const err = this._error || errors.CHANNEL_CLOSED()
 
     for (const pair of this._pairing) {
@@ -109,6 +125,7 @@ class BridgingRelaySession extends EventEmitter {
   }
 
   _ondestroy () {
+    this._destroyed = true
     this.emit('destroy')
   }
 
@@ -149,12 +166,14 @@ class BridgingRelaySession extends EventEmitter {
         const remote = pair.remote(isInitiator)
 
         stream
-          .on('error', (err) => session.emit('error', err))
+          .on('error', (err) => session._ending || session.emit('error', err))
           .on('close', () => session._streams.delete(stream))
           .relayTo(remote.stream)
 
         session._pairing.delete(pair)
         session._streams.set(keyString, stream)
+
+        session._endMaybe()
 
         session._pair.send({
           isInitiator,
@@ -187,6 +206,29 @@ class BridgingRelaySession extends EventEmitter {
       stream.destroy(errors.PAIRING_CANCELLED())
 
       this._streams.delete(keyString)
+    }
+  }
+
+  cork () {
+    this._channel.cork()
+  }
+
+  uncork () {
+    this._channel.uncork()
+  }
+
+  async end () {
+    if (this._ending) return this._ending
+
+    this._ending = EventEmitter.once(this, 'close')
+    this._endMaybe()
+
+    return this._ending
+  }
+
+  _endMaybe () {
+    if (this._ending && this._pairing.size === 0) {
+      this._channel.close()
     }
   }
 
@@ -254,11 +296,20 @@ exports.Client = class BridgingRelayClient extends EventEmitter {
       encoding: m.unpair
     })
 
+    this._ending = false
     this._destroyed = false
     this._error = null
     this._requests = new Map()
 
     this._channel.open(handshake)
+  }
+
+  get closed () {
+    return this._channel.closed
+  }
+
+  get mux () {
+    return this._mux
   }
 
   get stream () {
@@ -274,6 +325,8 @@ exports.Client = class BridgingRelayClient extends EventEmitter {
   }
 
   _onclose () {
+    this._ending = Promise.resolve()
+
     const err = this._error || errors.CHANNEL_CLOSED()
 
     for (const request of this._requests.values()) {
@@ -283,9 +336,12 @@ exports.Client = class BridgingRelayClient extends EventEmitter {
     this._requests.clear()
 
     this.constructor._clients.delete(this.stream)
+
+    this.emit('close')
   }
 
   _ondestroy () {
+    this._destroyed = true
     this.emit('destroy')
   }
 
@@ -303,6 +359,8 @@ exports.Client = class BridgingRelayClient extends EventEmitter {
   }
 
   pair (isInitiator, token, stream) {
+    if (this._destroyed) throw errors.CHANNEL_DESTROYED()
+
     const keyString = token.toString('hex')
 
     if (this._requests.has(keyString)) throw errors.ALREADY_PAIRING()
@@ -311,12 +369,12 @@ exports.Client = class BridgingRelayClient extends EventEmitter {
 
     this._requests.set(keyString, request)
 
-    request.on('close', () => this._requests.delete(keyString))
-
     return request
   }
 
   unpair (token) {
+    if (this._destroyed) throw errors.CHANNEL_DESTROYED()
+
     const keyString = token.toString('hex')
 
     const request = this._requests.get(keyString)
@@ -324,6 +382,29 @@ exports.Client = class BridgingRelayClient extends EventEmitter {
     if (request) request.destroy(errors.PAIRING_CANCELLED())
 
     this._unpair.send({ token })
+  }
+
+  cork () {
+    this._channel.cork()
+  }
+
+  uncork () {
+    this._channel.uncork()
+  }
+
+  async end () {
+    if (this._ending) return this._ending
+
+    this._ending = EventEmitter.once(this, 'close')
+    this._endMaybe()
+
+    return this._ending
+  }
+
+  _endMaybe () {
+    if (this._ending && this._requests.size === 0) {
+      this._channel.close()
+    }
   }
 
   destroy (err) {
@@ -346,12 +427,22 @@ class BridgingRelayRequest extends Readable {
   }
 
   _open (cb) {
+    if (this.client._destroyed) return cb(errors.CHANNEL_DESTROYED())
+
     this.client._pair.send({
       isInitiator: this.isInitiator,
       token: this.token,
       id: this.stream.id,
       seq: 0
     })
+
+    cb(null)
+  }
+
+  _destroy (cb) {
+    this.client._requests.delete(this.token.toString('hex'))
+
+    this.client._endMaybe()
 
     cb(null)
   }

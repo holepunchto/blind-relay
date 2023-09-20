@@ -31,17 +31,9 @@ exports.withClient = function withClient (t, server) {
 
   const session = server.accept(serverStream)
 
-  session.on('error', (err) => {
-    switch (err.code) {
-      case 'CHANNEL_DESTROYED':
-      case 'CHANNEL_CLOSED':
-        break
-      default:
-        t.fail(err)
-    }
-  })
+  session.on('error', (err) => t.fail(err))
 
   const client = new relay.Client(clientStream)
-  t.teardown(() => client.destroy())
+  t.teardown(() => client.end())
   return client
 }
