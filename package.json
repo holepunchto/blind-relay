@@ -1,6 +1,6 @@
 {
   "name": "protomux-bridging-relay",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Bridging relay for UDX over Protomux channels",
   "main": "index.js",
   "files": [
