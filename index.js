@@ -172,7 +172,7 @@ class BridgingRelaySession extends EventEmitter {
 
         stream
           .on('error', session._onerror)
-          .on('close', () => session._streams.delete(stream))
+          .on('close', () => session._streams.delete(keyString))
           .relayTo(remote.stream)
 
         session._pairing.delete(pair)
