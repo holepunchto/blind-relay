@@ -110,8 +110,8 @@ class BridgingRelaySession extends EventEmitter {
 
     const err = this._error || errors.CHANNEL_CLOSED()
 
-    for (const pair of this._pairing) {
-      this._server._pairing.delete(pair.token.toString('hex'))
+    for (const token of this._pairing) {
+      this._server._pairing.delete(token.toString('hex'))
     }
 
     for (const stream of this._streams.values()) {
@@ -140,55 +140,43 @@ class BridgingRelaySession extends EventEmitter {
     let pair = this._server._pairing.get(keyString)
 
     if (pair === undefined) {
-      pair = new BridgingRelaySessionPair(token)
+      pair = new BridgingRelayPair(token)
       this._server._pairing.set(keyString, pair)
-    } else if (pair.sessions[+isInitiator]) return
+    } else if (pair.links[+isInitiator]) return
 
-    this._pairing.add(pair)
+    this._pairing.add(keyString)
 
-    pair.sessions[+isInitiator] = {
-      self: this,
-      isInitiator,
-      remoteId,
-      stream: null
+    pair.links[+isInitiator] = new BridgingRelayLink(this, isInitiator, remoteId)
+
+    if (!pair.paired) return
+
+    this._server._pairing.delete(keyString)
+
+    for (const link of pair.links) {
+      link.createStream()
     }
 
-    if (pair.paired) {
-      this._server._pairing.delete(keyString)
+    for (const { isInitiator, session, remoteId, stream } of pair.links) {
+      const remote = pair.remote(isInitiator)
 
-      for (const session of pair.sessions) {
-        const remoteId = session.remoteId
+      stream
+        .on('error', session._onerror)
+        .on('close', () => session._streams.delete(keyString))
+        .relayTo(remote.stream)
 
-        session.stream = this._server._createStream({
-          firewall (socket, port, host) {
-            this.connect(socket, remoteId, port, host)
-            return false
-          }
-        })
-      }
+      session._pairing.delete(keyString)
+      session._streams.set(keyString, stream)
 
-      for (const { isInitiator, self: session, remoteId, stream } of pair.sessions) {
-        const remote = pair.remote(isInitiator)
+      session._endMaybe()
 
-        stream
-          .on('error', session._onerror)
-          .on('close', () => session._streams.delete(keyString))
-          .relayTo(remote.stream)
+      session._pair.send({
+        isInitiator,
+        token,
+        id: stream.id,
+        seq: 0
+      })
 
-        session._pairing.delete(pair)
-        session._streams.set(keyString, stream)
-
-        session._endMaybe()
-
-        session._pair.send({
-          isInitiator,
-          token,
-          id: stream.id,
-          seq: 0
-        })
-
-        session.emit('pair', isInitiator, token, stream, remoteId)
-      }
+      session.emit('pair', isInitiator, token, stream, remoteId)
     }
   }
 
@@ -198,8 +186,8 @@ class BridgingRelaySession extends EventEmitter {
     const pair = this._server._pairing.get(keyString)
 
     if (pair) {
-      for (const session of pair.sessions) {
-        if (session) session.self._pairing.delete(pair)
+      for (const link of pair.links) {
+        if (link) link.session._pairing.delete(keyString)
       }
 
       return this._server._pairing.delete(keyString)
@@ -249,18 +237,41 @@ class BridgingRelaySession extends EventEmitter {
   }
 }
 
-class BridgingRelaySessionPair {
+class BridgingRelayPair {
   constructor (token) {
     this.token = token
-    this.sessions = [null, null]
+    this.links = [null, null]
   }
 
   get paired () {
-    return this.sessions[0] !== null && this.sessions[1] !== null
+    return this.links[0] !== null && this.links[1] !== null
   }
 
   remote (isInitiator) {
-    return this.sessions[isInitiator ? 0 : 1]
+    return this.links[isInitiator ? 0 : 1]
+  }
+}
+
+class BridgingRelayLink {
+  constructor (session, isInitiator, remoteId) {
+    this.session = session
+    this.isInitiator = isInitiator
+    this.remoteId = remoteId
+    this.stream = null
+  }
+
+  createStream () {
+    if (this.stream) return
+
+    this.stream = this.session._server._createStream({
+      firewall: this._onfirewall.bind(this)
+    })
+  }
+
+  _onfirewall (socket, port, host) {
+    this.stream.connect(socket, this.remoteId, port, host)
+
+    return false
   }
 }
 
