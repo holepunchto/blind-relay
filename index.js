@@ -77,6 +77,7 @@ class BridgingRelaySession extends EventEmitter {
       onmessage: this._onunpair.bind(this)
     })
 
+    this._destroyed = false
     this._error = null
     this._pairing = new Set()
     this._streams = new Map()
@@ -190,6 +191,9 @@ class BridgingRelaySession extends EventEmitter {
   }
 
   destroy (err) {
+    if (this._destroyed) return
+    this._destroyed = true
+
     this._error = err || errors.CHANNEL_DESTROYED()
     this._channel.close()
   }
@@ -250,6 +254,7 @@ exports.Client = class BridgingRelayClient extends EventEmitter {
       encoding: m.unpair
     })
 
+    this._destroyed = false
     this._error = null
     this._requests = new Map()
 
@@ -300,6 +305,8 @@ exports.Client = class BridgingRelayClient extends EventEmitter {
   pair (isInitiator, token, stream) {
     const keyString = token.toString('hex')
 
+    if (this._requests.has(keyString)) throw errors.ALREADY_PAIRING()
+
     const request = new BridgingRelayRequest(this, isInitiator, token, stream)
 
     this._requests.set(keyString, request)
@@ -320,6 +327,9 @@ exports.Client = class BridgingRelayClient extends EventEmitter {
   }
 
   destroy (err) {
+    if (this._destroyed) return
+    this._destroyed = true
+
     this._error = err || errors.CHANNEL_DESTROYED()
     this._channel.close()
   }
