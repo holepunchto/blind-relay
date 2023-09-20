@@ -62,3 +62,39 @@ test('basic', (t) => {
       })
   }
 })
+
+test('unpair after pair', (t) => {
+  t.plan(2)
+
+  const udx = new UDX()
+
+  let id = 0
+  const createStream = (opts) => udx.createStream(++id, opts)
+
+  const server = withServer(t, createStream)
+  const token = relay.token()
+
+  {
+    const client = withClient(t, server)
+    const stream = createStream()
+
+    const request = client.pair(true, token, stream)
+
+    request
+      .on('error', (err) => t.fail(err))
+      .on('data', () => t.pass('paired'))
+      .on('close', () => client.unpair(token))
+  }
+
+  {
+    const client = withClient(t, server)
+    const stream = createStream()
+
+    const request = client.pair(false, token, stream)
+
+    request
+      .on('error', (err) => t.fail(err))
+      .on('data', () => t.pass('paired'))
+      .on('close', () => client.unpair(token))
+  }
+})

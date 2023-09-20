@@ -84,6 +84,8 @@ class BridgingRelaySession extends EventEmitter {
     this._pairing = new Set()
     this._streams = new Map()
 
+    this._onerror = (err) => this.emit('error', err)
+
     this._channel.open(handshake)
   }
 
@@ -113,7 +115,10 @@ class BridgingRelaySession extends EventEmitter {
     }
 
     for (const stream of this._streams.values()) {
-      stream.destroy(err)
+      stream
+        .off('error', this._onerror)
+        .on('error', noop)
+        .destroy(err)
     }
 
     this._pairing.clear()
@@ -166,7 +171,7 @@ class BridgingRelaySession extends EventEmitter {
         const remote = pair.remote(isInitiator)
 
         stream
-          .on('error', (err) => session._ending || session.emit('error', err))
+          .on('error', session._onerror)
           .on('close', () => session._streams.delete(stream))
           .relayTo(remote.stream)
 
@@ -203,7 +208,10 @@ class BridgingRelaySession extends EventEmitter {
     const stream = this._streams.get(keyString)
 
     if (stream) {
-      stream.destroy(errors.PAIRING_CANCELLED())
+      stream
+        .off('error', this._onerror)
+        .on('error', noop)
+        .destroy(errors.PAIRING_CANCELLED())
 
       this._streams.delete(keyString)
     }
@@ -346,9 +354,7 @@ exports.Client = class BridgingRelayClient extends EventEmitter {
   }
 
   _onpair ({ isInitiator, token, id: remoteId }) {
-    const keyString = token.toString('hex')
-
-    const request = this._requests.get(keyString)
+    const request = this._requests.get(token.toString('hex'))
 
     if (request === undefined || request.isInitiator !== isInitiator) return
 
@@ -375,9 +381,7 @@ exports.Client = class BridgingRelayClient extends EventEmitter {
   unpair (token) {
     if (this._destroyed) throw errors.CHANNEL_DESTROYED()
 
-    const keyString = token.toString('hex')
-
-    const request = this._requests.get(keyString)
+    const request = this._requests.get(token.toString('hex'))
 
     if (request) request.destroy(errors.PAIRING_CANCELLED())
 
@@ -452,6 +456,8 @@ exports.token = function token (buf = b4a.allocUnsafe(32)) {
   sodium.randombytes_buf(buf)
   return buf
 }
+
+function noop () {}
 
 const m = exports.messages = {}
 
