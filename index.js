@@ -148,7 +148,7 @@ class BridgingRelaySession extends EventEmitter {
         const remote = pair.remote(isInitiator)
 
         stream
-          .on('error', () => { /* TODO */ })
+          .on('error', (err) => session.emit('error', err))
           .on('close', () => session._streams.delete(stream))
           .relayTo(remote.stream)
 
@@ -162,7 +162,7 @@ class BridgingRelaySession extends EventEmitter {
           seq: 0
         })
 
-        this.emit('pair', isInitiator, token, stream, remoteId)
+        session.emit('pair', isInitiator, token, stream, remoteId)
       }
     }
   }
