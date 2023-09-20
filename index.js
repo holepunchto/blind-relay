@@ -8,8 +8,10 @@ const bitfield = require('compact-encoding-bitfield')
 const bits = require('bits-to-bytes')
 const errors = require('./lib/errors')
 
-exports.Server = class BridgingRelayServer {
+exports.Server = class BridgingRelayServer extends EventEmitter {
   constructor (opts = {}) {
+    super()
+
     const {
       createStream
     } = opts
@@ -142,7 +144,7 @@ class BridgingRelaySession extends EventEmitter {
         })
       }
 
-      for (const { isInitiator, self: session, stream } of pair.sessions) {
+      for (const { isInitiator, self: session, remoteId, stream } of pair.sessions) {
         const remote = pair.remote(isInitiator)
 
         stream
@@ -159,6 +161,8 @@ class BridgingRelaySession extends EventEmitter {
           id: stream.id,
           seq: 0
         })
+
+        this.emit('pair', isInitiator, token, stream, remoteId)
       }
     }
   }
@@ -289,6 +293,8 @@ exports.Client = class BridgingRelayClient extends EventEmitter {
 
     request.push(remoteId)
     request.push(null)
+
+    this.emit('pair', request.isInitiator, request.token, request.stream, remoteId)
   }
 
   pair (isInitiator, token, stream) {
