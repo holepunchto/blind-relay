@@ -446,9 +446,9 @@ class BridgingRelayRequest extends Readable {
   _destroy (cb) {
     this.client._requests.delete(this.token.toString('hex'))
 
-    this.client._endMaybe()
-
     cb(null)
+
+    this.client._endMaybe()
   }
 }
 

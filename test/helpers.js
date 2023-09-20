@@ -4,13 +4,13 @@ const relay = require('..')
 exports.withSocket = function withSocket (t, udx) {
   const socket = udx.createSocket()
   socket.bind()
-  t.teardown(() => socket.close())
+  t.teardown(() => socket.close(), { order: 3 })
   return socket
 }
 
 exports.withServer = function withServer (t, createStream) {
   const server = new relay.Server({ createStream })
-  t.teardown(() => server.close())
+  t.teardown(() => server.close(), { order: 2 })
   return server
 }
 
@@ -34,6 +34,6 @@ exports.withClient = function withClient (t, server) {
   session.on('error', (err) => t.fail(err))
 
   const client = new relay.Client(clientStream)
-  t.teardown(() => client.end())
+  t.teardown(() => client.end(), { order: 1 })
   return client
 }
