@@ -22,7 +22,7 @@ All types are specified as their corresponding [compact-encoding](https://github
 
 #### `unpair` (`1`)
 
-1.  `bitfield(1)` Flags, reserved.
+1.  `bitfield(0)` Flags, reserved.
 2.  `fixed32` Preexchanged bridging token.
 
 ## License
