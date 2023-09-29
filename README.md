@@ -1,9 +1,9 @@
-# protomux-blind-relay
+# blind-relay
 
 Blind relay for [UDX](https://github.com/holepunchto/udx-native) over [Protomux](https://github.com/mafintosh/protomux) channels. By acting as a blind relay, a host may accept pairing requests from other hosts and relay UDX stream messages between them, similar to Traversal Using Relays around NAT (TURN).
 
 ```sh
-npm i protomux-blind-relay
+npm i blind-relay
 ```
 
 ## Protocol

@@ -1,5 +1,5 @@
 {
-  "name": "protomux-blind-relay",
+  "name": "blind-relay",
   "version": "1.2.0",
   "description": "Blind relay for UDX over Protomux channels",
   "main": "index.js",
@@ -12,14 +12,14 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/holepunchto/protomux-blind-relay.git"
+    "url": "git+https://github.com/holepunchto/blind-relay.git"
   },
   "author": "Holepunch",
   "license": "Apache-2.0",
   "bugs": {
-    "url": "https://github.com/holepunchto/protomux-blind-relay/issues"
+    "url": "https://github.com/holepunchto/blind-relay/issues"
   },
-  "homepage": "https://github.com/holepunchto/protomux-blind-relay#readme",
+  "homepage": "https://github.com/holepunchto/blind-relay#readme",
   "dependencies": {
     "b4a": "^1.6.4",
     "bits-to-bytes": "^1.3.0",

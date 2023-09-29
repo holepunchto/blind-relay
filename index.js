@@ -60,7 +60,7 @@ class BlindRelaySession extends EventEmitter {
     this._mux = Protomux.from(stream)
 
     this._channel = this._mux.createChannel({
-      protocol: 'protomux-blind-relay',
+      protocol: 'blind-relay',
       id,
       handshake: handshake ? handshakeEncoding || c.raw : null,
       onopen: this._onopen.bind(this),
@@ -298,7 +298,7 @@ exports.Client = class BlindRelayClient extends EventEmitter {
     this._mux = Protomux.from(stream)
 
     this._channel = this._mux.createChannel({
-      protocol: 'protomux-blind-relay',
+      protocol: 'blind-relay',
       id,
       handshake: handshake ? handshakeEncoding || c.raw : null,
       onopen: this._onopen.bind(this),
