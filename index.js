@@ -8,7 +8,7 @@ const bitfield = require('compact-encoding-bitfield')
 const bits = require('bits-to-bytes')
 const errors = require('./lib/errors')
 
-exports.Server = class BridgingRelayServer extends EventEmitter {
+exports.Server = class BlindRelayServer extends EventEmitter {
   constructor (opts = {}) {
     super()
 
@@ -26,7 +26,7 @@ exports.Server = class BridgingRelayServer extends EventEmitter {
   }
 
   accept (stream, opts) {
-    const session = new BridgingRelaySession(this, stream, opts)
+    const session = new BlindRelaySession(this, stream, opts)
 
     this._sessions.add(session)
 
@@ -46,7 +46,7 @@ exports.Server = class BridgingRelayServer extends EventEmitter {
   }
 }
 
-class BridgingRelaySession extends EventEmitter {
+class BlindRelaySession extends EventEmitter {
   constructor (server, stream, opts = {}) {
     super()
 
@@ -60,7 +60,7 @@ class BridgingRelaySession extends EventEmitter {
     this._mux = Protomux.from(stream)
 
     this._channel = this._mux.createChannel({
-      protocol: 'protomux-bridging-relay',
+      protocol: 'protomux-blind-relay',
       id,
       handshake: handshake ? handshakeEncoding || c.raw : null,
       onopen: this._onopen.bind(this),
@@ -140,13 +140,13 @@ class BridgingRelaySession extends EventEmitter {
     let pair = this._server._pairing.get(keyString)
 
     if (pair === undefined) {
-      pair = new BridgingRelayPair(token)
+      pair = new BlindRelayPair(token)
       this._server._pairing.set(keyString, pair)
     } else if (pair.links[+isInitiator]) return
 
     this._pairing.add(keyString)
 
-    pair.links[+isInitiator] = new BridgingRelayLink(this, isInitiator, remoteId)
+    pair.links[+isInitiator] = new BlindRelayLink(this, isInitiator, remoteId)
 
     if (!pair.paired) return
 
@@ -237,7 +237,7 @@ class BridgingRelaySession extends EventEmitter {
   }
 }
 
-class BridgingRelayPair {
+class BlindRelayPair {
   constructor (token) {
     this.token = token
     this.links = [null, null]
@@ -252,7 +252,7 @@ class BridgingRelayPair {
   }
 }
 
-class BridgingRelayLink {
+class BlindRelayLink {
   constructor (session, isInitiator, remoteId) {
     this.session = session
     this.isInitiator = isInitiator
@@ -275,7 +275,7 @@ class BridgingRelayLink {
   }
 }
 
-exports.Client = class BridgingRelayClient extends EventEmitter {
+exports.Client = class BlindRelayClient extends EventEmitter {
   static _clients = new WeakMap()
 
   static from (stream, opts) {
@@ -298,7 +298,7 @@ exports.Client = class BridgingRelayClient extends EventEmitter {
     this._mux = Protomux.from(stream)
 
     this._channel = this._mux.createChannel({
-      protocol: 'protomux-bridging-relay',
+      protocol: 'protomux-blind-relay',
       id,
       handshake: handshake ? handshakeEncoding || c.raw : null,
       onopen: this._onopen.bind(this),
@@ -382,7 +382,7 @@ exports.Client = class BridgingRelayClient extends EventEmitter {
 
     if (this._requests.has(keyString)) throw errors.ALREADY_PAIRING()
 
-    const request = new BridgingRelayRequest(this, isInitiator, token, stream)
+    const request = new BlindRelayRequest(this, isInitiator, token, stream)
 
     this._requests.set(keyString, request)
 
@@ -431,7 +431,7 @@ exports.Client = class BridgingRelayClient extends EventEmitter {
   }
 }
 
-class BridgingRelayRequest extends Readable {
+class BlindRelayRequest extends Readable {
   constructor (client, isInitiator, token, stream) {
     super()
 
