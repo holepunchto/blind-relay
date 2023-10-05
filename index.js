@@ -152,11 +152,13 @@ class BlindRelaySession extends EventEmitter {
 
     this._server._pairing.delete(keyString)
 
+    // 1st pass: Create the raw streams needed for each end of the link.
     for (const link of pair.links) {
       link.createStream()
     }
 
-    for (const { isInitiator, session, remoteId, stream } of pair.links) {
+    // 2nd pass: Connect the raw streams and set up handlers.
+    for (const { isInitiator, session, stream } of pair.links) {
       const remote = pair.remote(isInitiator)
 
       stream
@@ -166,15 +168,18 @@ class BlindRelaySession extends EventEmitter {
 
       session._pairing.delete(keyString)
       session._streams.set(keyString, stream)
+    }
 
-      session._endMaybe()
-
+    // 3rd pass: Let either end of the link know the streams were set up.
+    for (const { isInitiator, session, remoteId, stream } of pair.links) {
       session._pair.send({
         isInitiator,
         token,
         id: stream.id,
         seq: 0
       })
+
+      session._endMaybe()
 
       session.emit('pair', isInitiator, token, stream, remoteId)
     }
