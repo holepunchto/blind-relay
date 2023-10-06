@@ -8,6 +8,37 @@ npm i blind-relay
 
 ## Protocol
 
+```mermaid
+sequenceDiagram
+    actor a as peer a
+    actor r as relay
+    actor b as peer b
+
+    par
+        a ->> r: pair { isInitiator: true, token, id, seq }
+    and
+        b ->> r: pair { isInitiator: false, token, id, seq }
+    end
+
+    note over r: The relay pairs peers a and b based on the token, allocates a new stream for both peers, and sends back the stream info
+
+    par
+        r -->> a: pair { isInitiator: true, token, id, seq }
+    and
+        r -->> b: pair { isInitiator: false, token, id, seq }
+    end
+
+    par
+        a ->> r: unpair { token }
+
+        note left of r: The relay deallocates the stream previously allocated to peer a
+    and
+        b ->> r: unpair { token }
+
+        note right of r: The relay deallocates the stream previously allocated to peer b
+    end
+```
+
 ### Messages
 
 All types are specified as their corresponding [compact-encoding](https://github.com/compact-encoding) codec.
