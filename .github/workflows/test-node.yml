@@ -1,5 +1,4 @@
-
-name: Build Status
+name: ci
 
 on:
   push:
@@ -11,8 +10,8 @@ on:
     branches:
       - main
 jobs:
-  build:
-    if: ${{ !startsWith(github.ref, 'refs/tags/')}} # Already runs for the push of the commit, no need to run again for the tag
+  test:
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }} # Already runs for the push of the commit, no need to run again for the tag
     strategy:
       matrix:
         node-version: [lts/*]
