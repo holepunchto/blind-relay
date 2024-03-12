@@ -463,10 +463,19 @@ class BlindRelayRequest extends Readable {
     this.isInitiator = isInitiator
     this.token = token
     this.stream = stream
+
+    this.tracer = createTracer(this, {
+      parent: client.tracer
+    })
   }
 
   _open (cb) {
     if (this.client._destroyed) return cb(errors.CHANNEL_DESTROYED())
+
+    this.tracer.trace('open', {
+      isInitiator: this.isInitiator,
+      stream: this.stream
+    })
 
     this.client._pair.send({
       isInitiator: this.isInitiator,
@@ -479,6 +488,8 @@ class BlindRelayRequest extends Readable {
   }
 
   _destroy (cb) {
+    this.tracer.trace('destroy')
+
     this.client._requests.delete(this.token.toString('hex'))
 
     cb(null)
