@@ -59,7 +59,8 @@ class BlindRelaySession extends EventEmitter {
 
     this.tracer = createTracer(this, {
       props: {
-        id
+        id,
+        remotePublicKey: stream.remotePublicKey
       }
     })
 
@@ -134,7 +135,7 @@ class BlindRelaySession extends EventEmitter {
 
     this._server._sessions.delete(this)
 
-    this.tracer.trace('close', { reason: err?.code })
+    this.tracer.trace('close', { error: err })
     this.emit('close')
   }
 
@@ -248,7 +249,7 @@ class BlindRelaySession extends EventEmitter {
 
     this._error = err || errors.CHANNEL_DESTROYED()
     this._channel.close()
-    this.tracer.trace('destroy', { reason: this._error?.code })
+    this.tracer.trace('destroy', { error: this._error })
   }
 }
 
@@ -312,7 +313,8 @@ exports.Client = class BlindRelayClient extends EventEmitter {
 
     this.tracer = createTracer(this, {
       props: {
-        id
+        id,
+        remotePublicKey: stream.remotePublicKey
       }
     })
 
@@ -378,7 +380,7 @@ exports.Client = class BlindRelayClient extends EventEmitter {
 
     this.constructor._clients.delete(this.stream)
 
-    this.tracer.trace('close', { reason: err?.code })
+    this.tracer.trace('close', { error: err })
     this.emit('close')
   }
 
@@ -451,7 +453,7 @@ exports.Client = class BlindRelayClient extends EventEmitter {
 
     this._error = err || errors.CHANNEL_DESTROYED()
     this._channel.close()
-    this.tracer.trace('destroy', { reason: err?.code })
+    this.tracer.trace('destroy', { error: err })
   }
 }
 
