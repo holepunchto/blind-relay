@@ -63,6 +63,15 @@ test('basic', (t) => {
   }
 })
 
+test('nrSessions getter', (t) => {
+  const udx = new UDX()
+
+  const createStream = (opts) => udx.createStream(0, opts)
+  const server = withServer(t, createStream)
+
+  t.is(server.nrSessions, 0, 'can get nrSessions')
+})
+
 test('unpair after pair', (t) => {
   t.plan(2)
 

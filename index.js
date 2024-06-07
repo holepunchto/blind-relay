@@ -26,6 +26,10 @@ exports.Server = class BlindRelayServer extends EventEmitter {
     return this._sessions[Symbol.iterator]()
   }
 
+  get nrSessions () {
+    return this._sessions.size
+  }
+
   accept (stream, opts) {
     const session = new BlindRelaySession(this, stream, opts)
 
