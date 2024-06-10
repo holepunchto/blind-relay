@@ -69,7 +69,7 @@ test('sessions getter', (t) => {
   const createStream = (opts) => udx.createStream(0, opts)
   const server = withServer(t, createStream)
 
-  t.is(server.sessions, server._sessions, 'can get nrSessions')
+  t.is(server.sessions, server._sessions, 'can get sessions')
 })
 
 test('unpair after pair', (t) => {
