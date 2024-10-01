@@ -7,7 +7,6 @@ const c = require('compact-encoding')
 const bitfield = require('compact-encoding-bitfield')
 const bits = require('bits-to-bytes')
 const errors = require('./lib/errors')
-const { createTracer } = require('hypertrace')
 
 exports.Server = class BlindRelayServer extends EventEmitter {
   constructor (opts = {}) {
@@ -57,13 +56,6 @@ class BlindRelaySession extends EventEmitter {
       handshakeEncoding
     } = opts
 
-    this.tracer = createTracer(this, {
-      props: {
-        id,
-        remotePublicKey: stream.remotePublicKey
-      }
-    })
-
     this._server = server
     this._mux = Protomux.from(stream)
 
@@ -110,7 +102,6 @@ class BlindRelaySession extends EventEmitter {
   }
 
   _onopen () {
-    this.tracer.trace('open')
     this.emit('open')
   }
 
@@ -135,7 +126,6 @@ class BlindRelaySession extends EventEmitter {
 
     this._server._sessions.delete(this)
 
-    this.tracer.trace('close', { error: err })
     this.emit('close')
   }
 
@@ -249,7 +239,6 @@ class BlindRelaySession extends EventEmitter {
 
     this._error = err || errors.CHANNEL_DESTROYED()
     this._channel.close()
-    this.tracer.trace('destroy', { error: this._error })
   }
 }
 
@@ -311,13 +300,6 @@ exports.Client = class BlindRelayClient extends EventEmitter {
       handshakeEncoding
     } = opts
 
-    this.tracer = createTracer(this, {
-      props: {
-        id,
-        remotePublicKey: stream.remotePublicKey
-      }
-    })
-
     this._mux = Protomux.from(stream)
 
     this._channel = this._mux.createChannel({
@@ -363,7 +345,6 @@ exports.Client = class BlindRelayClient extends EventEmitter {
   }
 
   _onopen () {
-    this.tracer.trace('open')
     this.emit('open')
   }
 
@@ -380,7 +361,6 @@ exports.Client = class BlindRelayClient extends EventEmitter {
 
     this.constructor._clients.delete(this.stream)
 
-    this.tracer.trace('close', { error: err })
     this.emit('close')
   }
 
@@ -453,7 +433,6 @@ exports.Client = class BlindRelayClient extends EventEmitter {
 
     this._error = err || errors.CHANNEL_DESTROYED()
     this._channel.close()
-    this.tracer.trace('destroy', { error: err })
   }
 }
 
@@ -465,19 +444,10 @@ class BlindRelayRequest extends Readable {
     this.isInitiator = isInitiator
     this.token = token
     this.stream = stream
-
-    this.tracer = createTracer(this, {
-      parent: client.tracer
-    })
   }
 
   _open (cb) {
     if (this.client._destroyed) return cb(errors.CHANNEL_DESTROYED())
-
-    this.tracer.trace('open', {
-      isInitiator: this.isInitiator,
-      stream: this.stream
-    })
 
     this.client._pair.send({
       isInitiator: this.isInitiator,
@@ -490,8 +460,6 @@ class BlindRelayRequest extends Readable {
   }
 
   _destroy (cb) {
-    this.tracer.trace('destroy')
-
     this.client._requests.delete(this.token.toString('hex'))
 
     cb(null)
