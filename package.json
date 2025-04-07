@@ -33,7 +33,7 @@
     "compact-encoding": "^2.12.0",
     "compact-encoding-bitfield": "^1.0.0",
     "protomux": "^3.5.1",
-    "sodium-universal": "^4.0.0",
+    "sodium-universal": "^5.0.0",
     "streamx": "^2.15.1"
   },
   "devDependencies": {
