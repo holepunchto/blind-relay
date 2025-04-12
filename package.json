@@ -1,6 +1,6 @@
 {
   "name": "blind-relay",
-  "version": "1.3.3",
+  "version": "1.4.0",
   "description": "Blind relay for UDX over Protomux channels",
   "main": "index.js",
   "files": [
