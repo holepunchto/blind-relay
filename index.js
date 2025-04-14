@@ -22,7 +22,7 @@ exports.Server = class BlindRelayServer extends EventEmitter {
   }
 
   get sessions () {
-    return this._sessions[Symbol.iterator]()
+    return this._sessions
   }
 
   accept (stream, opts) {
