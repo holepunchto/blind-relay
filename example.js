@@ -9,9 +9,14 @@ const relay = new RelayServer({
   }
 })
 
-const server = dht.createServer((socket) => relay.accept(socket, {
-  id: socket.remotePublicKey
-}))
+const server = dht.createServer((socket) => {
+  const session = relay.accept(socket, {
+    id: socket.remotePublicKey
+  })
+
+  // For timeouts, connection reset by peer etc.
+  session.on('error', e => { console.error(e) })
+})
 
 server
   .listen()
