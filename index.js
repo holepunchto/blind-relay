@@ -9,23 +9,21 @@ const bits = require('bits-to-bytes')
 const errors = require('./lib/errors')
 
 exports.Server = class BlindRelayServer extends EventEmitter {
-  constructor (opts = {}) {
+  constructor(opts = {}) {
     super()
 
-    const {
-      createStream
-    } = opts
+    const { createStream } = opts
 
     this._createStream = createStream
     this._pairing = new Map()
     this._sessions = new Set()
   }
 
-  get sessions () {
+  get sessions() {
     return this._sessions[Symbol.iterator]()
   }
 
-  accept (stream, opts) {
+  accept(stream, opts) {
     const session = new BlindRelaySession(this, stream, opts)
 
     this._sessions.add(session)
@@ -33,7 +31,7 @@ exports.Server = class BlindRelayServer extends EventEmitter {
     return session
   }
 
-  async close () {
+  async close() {
     const ending = []
 
     for (const session of this._sessions) {
@@ -47,14 +45,10 @@ exports.Server = class BlindRelayServer extends EventEmitter {
 }
 
 class BlindRelaySession extends EventEmitter {
-  constructor (server, stream, opts = {}) {
+  constructor(server, stream, opts = {}) {
     super()
 
-    const {
-      id,
-      handshake,
-      handshakeEncoding
-    } = opts
+    const { id, handshake, handshakeEncoding } = opts
 
     this._server = server
     this._mux = Protomux.from(stream)
@@ -89,23 +83,23 @@ class BlindRelaySession extends EventEmitter {
     this._channel.open(handshake)
   }
 
-  get closed () {
+  get closed() {
     return this._channel.closed
   }
 
-  get mux () {
+  get mux() {
     return this._mux
   }
 
-  get stream () {
+  get stream() {
     return this._mux.stream
   }
 
-  _onopen () {
+  _onopen() {
     this.emit('open')
   }
 
-  _onclose () {
+  _onclose() {
     this._ending = Promise.resolve()
 
     const err = this._error || errors.CHANNEL_CLOSED()
@@ -115,10 +109,7 @@ class BlindRelaySession extends EventEmitter {
     }
 
     for (const stream of this._streams.values()) {
-      stream
-        .off('error', this._onerror)
-        .on('error', noop)
-        .destroy(err)
+      stream.off('error', this._onerror).on('error', noop).destroy(err)
     }
 
     this._pairing.clear()
@@ -129,12 +120,12 @@ class BlindRelaySession extends EventEmitter {
     this.emit('close')
   }
 
-  _ondestroy () {
+  _ondestroy() {
     this._destroyed = true
     this.emit('destroy')
   }
 
-  _onpair ({ isInitiator, token, id: remoteId }) {
+  _onpair({ isInitiator, token, id: remoteId }) {
     const keyString = token.toString('hex')
 
     let pair = this._server._pairing.get(keyString)
@@ -185,7 +176,7 @@ class BlindRelaySession extends EventEmitter {
     }
   }
 
-  _onunpair ({ token }) {
+  _onunpair({ token }) {
     const keyString = token.toString('hex')
 
     const pair = this._server._pairing.get(keyString)
@@ -210,15 +201,15 @@ class BlindRelaySession extends EventEmitter {
     }
   }
 
-  cork () {
+  cork() {
     this._channel.cork()
   }
 
-  uncork () {
+  uncork() {
     this._channel.uncork()
   }
 
-  async end () {
+  async end() {
     if (this._ending) return this._ending
 
     this._ending = EventEmitter.once(this, 'close')
@@ -227,13 +218,13 @@ class BlindRelaySession extends EventEmitter {
     return this._ending
   }
 
-  _endMaybe () {
+  _endMaybe() {
     if (this._ending && this._pairing.size === 0) {
       this._channel.close()
     }
   }
 
-  destroy (err) {
+  destroy(err) {
     if (this._destroyed) return
     this._destroyed = true
 
@@ -243,29 +234,29 @@ class BlindRelaySession extends EventEmitter {
 }
 
 class BlindRelayPair {
-  constructor (token) {
+  constructor(token) {
     this.token = token
     this.links = [null, null]
   }
 
-  get paired () {
+  get paired() {
     return this.links[0] !== null && this.links[1] !== null
   }
 
-  remote (isInitiator) {
+  remote(isInitiator) {
     return this.links[isInitiator ? 0 : 1]
   }
 }
 
 class BlindRelayLink {
-  constructor (session, isInitiator, remoteId) {
+  constructor(session, isInitiator, remoteId) {
     this.session = session
     this.isInitiator = isInitiator
     this.remoteId = remoteId
     this.stream = null
   }
 
-  createStream () {
+  createStream() {
     if (this.stream) return
 
     this.stream = this.session._server._createStream({
@@ -273,7 +264,7 @@ class BlindRelayLink {
     })
   }
 
-  _onfirewall (socket, port, host) {
+  _onfirewall(socket, port, host) {
     this.stream.connect(socket, this.remoteId, port, host)
 
     return false
@@ -283,7 +274,7 @@ class BlindRelayLink {
 exports.Client = class BlindRelayClient extends EventEmitter {
   static _clients = new WeakMap()
 
-  static from (stream, opts) {
+  static from(stream, opts) {
     let client = this._clients.get(stream)
     if (client) return client
     client = new this(stream, opts)
@@ -291,14 +282,10 @@ exports.Client = class BlindRelayClient extends EventEmitter {
     return client
   }
 
-  constructor (stream, opts = {}) {
+  constructor(stream, opts = {}) {
     super()
 
-    const {
-      id,
-      handshake,
-      handshakeEncoding
-    } = opts
+    const { id, handshake, handshakeEncoding } = opts
 
     this._mux = Protomux.from(stream)
 
@@ -328,27 +315,27 @@ exports.Client = class BlindRelayClient extends EventEmitter {
     this._channel.open(handshake)
   }
 
-  get closed () {
+  get closed() {
     return this._channel.closed
   }
 
-  get mux () {
+  get mux() {
     return this._mux
   }
 
-  get stream () {
+  get stream() {
     return this._mux.stream
   }
 
-  get requests () {
+  get requests() {
     return this._requests.values()
   }
 
-  _onopen () {
+  _onopen() {
     this.emit('open')
   }
 
-  _onclose () {
+  _onclose() {
     this._ending = Promise.resolve()
 
     const err = this._error || errors.CHANNEL_CLOSED()
@@ -364,12 +351,12 @@ exports.Client = class BlindRelayClient extends EventEmitter {
     this.emit('close')
   }
 
-  _ondestroy () {
+  _ondestroy() {
     this._destroyed = true
     this.emit('destroy')
   }
 
-  _onpair ({ isInitiator, token, id: remoteId }) {
+  _onpair({ isInitiator, token, id: remoteId }) {
     const request = this._requests.get(token.toString('hex'))
 
     if (request === undefined || request.isInitiator !== isInitiator) return
@@ -377,10 +364,16 @@ exports.Client = class BlindRelayClient extends EventEmitter {
     request.push(remoteId)
     request.push(null)
 
-    this.emit('pair', request.isInitiator, request.token, request.stream, remoteId)
+    this.emit(
+      'pair',
+      request.isInitiator,
+      request.token,
+      request.stream,
+      remoteId
+    )
   }
 
-  pair (isInitiator, token, stream) {
+  pair(isInitiator, token, stream) {
     if (this._destroyed) throw errors.CHANNEL_DESTROYED()
 
     const keyString = token.toString('hex')
@@ -394,7 +387,7 @@ exports.Client = class BlindRelayClient extends EventEmitter {
     return request
   }
 
-  unpair (token) {
+  unpair(token) {
     if (this._destroyed) throw errors.CHANNEL_DESTROYED()
 
     const request = this._requests.get(token.toString('hex'))
@@ -404,15 +397,15 @@ exports.Client = class BlindRelayClient extends EventEmitter {
     this._unpair.send({ token })
   }
 
-  cork () {
+  cork() {
     this._channel.cork()
   }
 
-  uncork () {
+  uncork() {
     this._channel.uncork()
   }
 
-  async end () {
+  async end() {
     if (this._ending) return this._ending
 
     this._ending = EventEmitter.once(this, 'close')
@@ -421,13 +414,13 @@ exports.Client = class BlindRelayClient extends EventEmitter {
     return this._ending
   }
 
-  _endMaybe () {
+  _endMaybe() {
     if (this._ending && this._requests.size === 0) {
       this._channel.close()
     }
   }
 
-  destroy (err) {
+  destroy(err) {
     if (this._destroyed) return
     this._destroyed = true
 
@@ -437,7 +430,7 @@ exports.Client = class BlindRelayClient extends EventEmitter {
 }
 
 class BlindRelayRequest extends Readable {
-  constructor (client, isInitiator, token, stream) {
+  constructor(client, isInitiator, token, stream) {
     super()
 
     this.client = client
@@ -446,7 +439,7 @@ class BlindRelayRequest extends Readable {
     this.stream = stream
   }
 
-  _open (cb) {
+  _open(cb) {
     if (this.client._destroyed) return cb(errors.CHANNEL_DESTROYED())
 
     this.client._pair.send({
@@ -459,7 +452,7 @@ class BlindRelayRequest extends Readable {
     cb(null)
   }
 
-  _destroy (cb) {
+  _destroy(cb) {
     this.client._requests.delete(this.token.toString('hex'))
 
     cb(null)
@@ -468,31 +461,31 @@ class BlindRelayRequest extends Readable {
   }
 }
 
-exports.token = function token (buf = b4a.allocUnsafe(32)) {
+exports.token = function token(buf = b4a.allocUnsafe(32)) {
   sodium.randombytes_buf(buf)
   return buf
 }
 
-function noop () {}
+function noop() {}
 
-const m = exports.messages = {}
+const m = (exports.messages = {})
 
 const flags = bitfield(7)
 
 m.pair = {
-  preencode (state, m) {
+  preencode(state, m) {
     flags.preencode(state)
     c.fixed32.preencode(state, m.token)
     c.uint.preencode(state, m.id)
     c.uint.preencode(state, m.seq)
   },
-  encode (state, m) {
+  encode(state, m) {
     flags.encode(state, bits.of(m.isInitiator))
     c.fixed32.encode(state, m.token)
     c.uint.encode(state, m.id)
     c.uint.encode(state, m.seq)
   },
-  decode (state) {
+  decode(state) {
     const [isInitiator] = bits.iterator(flags.decode(state))
 
     return {
@@ -505,15 +498,15 @@ m.pair = {
 }
 
 m.unpair = {
-  preencode (state, m) {
+  preencode(state, m) {
     flags.preencode(state)
     c.fixed32.preencode(state, m.token)
   },
-  encode (state, m) {
+  encode(state, m) {
     flags.encode(state, bits.of())
     c.fixed32.encode(state, m.token)
   },
-  decode (state) {
+  decode(state) {
     flags.decode(state)
 
     return {
