@@ -192,10 +192,7 @@ class BlindRelaySession extends EventEmitter {
     const stream = this._streams.get(keyString)
 
     if (stream) {
-      stream
-        .off('error', this._onerror)
-        .on('error', noop)
-        .destroy(errors.PAIRING_CANCELLED())
+      stream.off('error', this._onerror).on('error', noop).destroy(errors.PAIRING_CANCELLED())
 
       this._streams.delete(keyString)
     }
@@ -364,13 +361,7 @@ exports.Client = class BlindRelayClient extends EventEmitter {
     request.push(remoteId)
     request.push(null)
 
-    this.emit(
-      'pair',
-      request.isInitiator,
-      request.token,
-      request.stream,
-      remoteId
-    )
+    this.emit('pair', request.isInitiator, request.token, request.stream, remoteId)
   }
 
   pair(isInitiator, token, stream) {

@@ -15,8 +15,4 @@ const server = dht.createServer((socket) =>
   })
 )
 
-server
-  .listen()
-  .then(() =>
-    console.log('Server listening on', server.publicKey.toString('hex'))
-  )
+server.listen().then(() => console.log('Server listening on', server.publicKey.toString('hex')))
