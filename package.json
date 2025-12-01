@@ -9,8 +9,9 @@
   ],
   "scripts": {
     "format": "prettier --write .",
-    "lint": "prettier --check .",
-    "test": "brittle test.mjs"
+    "lint": "prettier --check . && lunte",
+    "test": "npm run test:bare",
+    "test:bare": "brittle-bare --coverage test.mjs"
   },
   "repository": {
     "type": "git",
@@ -41,6 +42,7 @@
   "devDependencies": {
     "brittle": "^3.2.1",
     "hyperdht": "^6.6.1",
+    "lunte": "^1.0.0",
     "prettier": "^3.6.2",
     "prettier-config-holepunch": "^2.0.0",
     "udx-native": "^1.6.1"
