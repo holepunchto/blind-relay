@@ -14,7 +14,9 @@ exports.withServer = function withServer(t, createStream) {
   return server
 }
 
-exports.withClient = function withClient(t, server) {
+exports.withClient = function withClient(t, server, opts = {}) {
+  const { onerror = (err) => t.fail(err), withSession = false } = opts
+
   const serverStream = new Duplex({
     write(data, cb) {
       clientStream.push(data)
@@ -30,10 +32,9 @@ exports.withClient = function withClient(t, server) {
   })
 
   const session = server.accept(serverStream)
-
-  session.on('error', (err) => t.fail(err))
+  session.on('error', onerror)
 
   const client = new relay.Client(clientStream)
   t.teardown(() => client.end(), { order: 1 })
-  return client
+  return withSession ? { client, session } : client
 }

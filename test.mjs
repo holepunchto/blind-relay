@@ -144,9 +144,212 @@ test('one-sided unpair closes both active relay streams', { timeout: 5000 }, asy
   t.pass('unpair closed both active relay streams')
 })
 
+test('stats: session lifecycle', async (t) => {
+  const udx = new UDX()
+
+  let id = 0
+  const createStream = (opts) => udx.createStream(++id, opts)
+
+  const server = withServer(t, createStream)
+  const { client, session } = withClient(t, server, { withSession: true })
+  const onopen = once(session, 'open')
+  const onclose = once(session, 'close')
+
+  if (server.stats.sessions.opened === 0) await onopen
+
+  t.is(server.stats.sessions.accepted, 1)
+  t.is(server.stats.sessions.opened, 1)
+  t.is(server.stats.sessions.active, 1)
+  t.is(server.stats.sessions.closed, 0)
+
+  await client.end()
+  await onclose
+
+  t.is(server.stats.sessions.active, 0)
+  t.is(server.stats.sessions.closed, 1)
+})
+
+test('stats: matched pairings and relayed streams', async (t) => {
+  const udx = new UDX()
+
+  let id = 0
+  const createStream = (opts) => udx.createStream(++id, opts)
+
+  const server = withServer(t, createStream)
+  const token = relay.token()
+
+  const clientA = withClient(t, server)
+  const clientB = withClient(t, server)
+  const streamA = createStream()
+  const streamB = createStream()
+
+  const requestA = clientA.pair(true, token, streamA)
+  const requestB = clientB.pair(false, token, streamB)
+
+  await Promise.all([onceData(requestA), onceData(requestB)])
+
+  t.alike(server.stats.pairings, {
+    requested: 2,
+    matched: 1,
+    cancelled: 0,
+    pending: 0,
+    active: 1
+  })
+
+  t.alike(server.stats.streams, {
+    opened: 2,
+    closed: 0,
+    errors: 0,
+    active: 2
+  })
+
+  await Promise.all([clientA.end(), clientB.end()])
+  await waitFor(() => server.stats.streams.closed === 2)
+
+  t.is(server.stats.pairings.active, 0)
+  t.is(server.stats.streams.active, 0)
+})
+
+test('stats: cancelled pending pairings', async (t) => {
+  const udx = new UDX()
+
+  let id = 0
+  const createStream = (opts) => udx.createStream(++id, opts)
+
+  const server = withServer(t, createStream)
+  const token = relay.token()
+  const client = withClient(t, server)
+  const request = client.pair(true, token, createStream())
+
+  request.on('data', noop)
+  request.on('error', noop)
+
+  await waitFor(() => server.stats.pairings.requested === 1)
+
+  t.alike(server.stats.pairings, {
+    requested: 1,
+    matched: 0,
+    cancelled: 0,
+    pending: 1,
+    active: 0
+  })
+
+  client.unpair(token)
+
+  await waitFor(() => server.stats.pairings.cancelled === 1)
+
+  t.alike(server.stats.pairings, {
+    requested: 1,
+    matched: 0,
+    cancelled: 1,
+    pending: 0,
+    active: 0
+  })
+})
+
+test('stats: cancelled active pairings', async (t) => {
+  const udx = new UDX()
+
+  let id = 0
+  const createStream = (opts) => udx.createStream(++id, opts)
+
+  const server = withServer(t, createStream)
+  const token = relay.token()
+
+  const clientA = withClient(t, server)
+  const clientB = withClient(t, server)
+  const streamA = createStream()
+  const streamB = createStream()
+
+  const requestA = clientA.pair(true, token, streamA)
+  const requestB = clientB.pair(false, token, streamB)
+
+  await Promise.all([onceData(requestA), onceData(requestB)])
+
+  t.alike(server.stats.pairings, {
+    requested: 2,
+    matched: 1,
+    cancelled: 0,
+    pending: 0,
+    active: 1
+  })
+
+  t.alike(server.stats.streams, {
+    opened: 2,
+    closed: 0,
+    errors: 0,
+    active: 2
+  })
+
+  clientA.unpair(token)
+
+  await waitFor(() => server.stats.pairings.cancelled === 1)
+  await waitFor(() => server.stats.streams.closed === 2)
+
+  t.is(server.stats.pairings.cancelled, 1)
+  t.is(server.stats.pairings.active, 0)
+  t.is(server.stats.streams.active, 0)
+})
+
+test('stats: stream errors', async (t) => {
+  const udx = new UDX()
+
+  let id = 0
+  const createStream = (opts) => udx.createStream(++id, opts)
+
+  const server = withServer(t, createStream)
+  const token = relay.token()
+  const sessionErrors = []
+
+  const { client: clientA, session: sessionA } = withClient(t, server, {
+    onerror: (err) => {
+      sessionErrors.push(err)
+    },
+    withSession: true
+  })
+  const { client: clientB } = withClient(t, server, { withSession: true })
+  const streamA = createStream()
+  const streamB = createStream()
+
+  const pairedOnServer = once(sessionA, 'pair')
+  const requestA = clientA.pair(true, token, streamA)
+  const requestB = clientB.pair(false, token, streamB)
+
+  await Promise.all([onceData(requestA), onceData(requestB), pairedOnServer])
+
+  const [, , relayStream] = await pairedOnServer
+  const err = new Error('boom')
+
+  relayStream.emit('error', err)
+
+  await waitFor(() => server.stats.streams.errors === 1)
+
+  t.is(server.stats.streams.errors, 1)
+  t.is(sessionErrors.length, 1)
+  t.is(sessionErrors[0], err)
+})
+
+async function waitFor(check, { timeout = 1000, interval = 10 } = {}) {
+  const started = Date.now()
+
+  while (Date.now() - started < timeout) {
+    if (check()) return
+    await new Promise((resolve) => setTimeout(resolve, interval))
+  }
+
+  throw new Error('Timed out waiting for condition')
+}
+
 function onceClose(stream) {
   // bare-events.once('close') rejects on a prior error, but here we only care that shutdown completes.
   return new Promise((resolve) => stream.once('close', resolve))
+}
+
+function onceData(stream) {
+  return new Promise((resolve, reject) => {
+    stream.once('error', reject)
+    stream.once('data', resolve)
+  })
 }
 
 function noop() {}

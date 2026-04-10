@@ -17,6 +17,7 @@ exports.Server = class BlindRelayServer extends EventEmitter {
     this._createStream = createStream
     this._pairing = new Map()
     this._sessions = new Set()
+    this.stats = createStats(this)
   }
 
   get sessions() {
@@ -27,6 +28,7 @@ exports.Server = class BlindRelayServer extends EventEmitter {
     const session = new BlindRelaySession(this, stream, opts)
 
     this._sessions.add(session)
+    this.stats.sessions.accepted++
 
     return session
   }
@@ -41,6 +43,28 @@ exports.Server = class BlindRelayServer extends EventEmitter {
     await Promise.all(ending)
 
     this._pairing.clear()
+  }
+
+  _activePairings() {
+    const active = new Set()
+
+    for (const session of this._sessions) {
+      for (const token of session._links.keys()) {
+        active.add(token)
+      }
+    }
+
+    return active.size
+  }
+
+  _activeStreams() {
+    let active = 0
+
+    for (const session of this._sessions) {
+      active += session._links.size
+    }
+
+    return active
   }
 }
 
@@ -78,7 +102,10 @@ class BlindRelaySession extends EventEmitter {
     this._pairing = new Set()
     this._links = new Map()
 
-    this._onerror = (err) => this.emit('error', err)
+    this._onerror = (err) => {
+      this._server.stats.streams.errors++
+      this.emit('error', err)
+    }
 
     this._channel.open(handshake)
   }
@@ -96,6 +123,7 @@ class BlindRelaySession extends EventEmitter {
   }
 
   _onopen() {
+    this._server.stats.sessions.opened++
     this.emit('open')
   }
 
@@ -103,6 +131,7 @@ class BlindRelaySession extends EventEmitter {
     this._ending = Promise.resolve()
 
     const err = this._error || errors.CHANNEL_CLOSED()
+    this._server.stats.pairings.cancelled += this._pairing.size
 
     for (const token of this._pairing) {
       this._server._pairing.delete(token.toString('hex'))
@@ -116,6 +145,7 @@ class BlindRelaySession extends EventEmitter {
     this._links.clear()
 
     this._server._sessions.delete(this)
+    this._server.stats.sessions.closed++
 
     this.emit('close')
   }
@@ -136,12 +166,14 @@ class BlindRelaySession extends EventEmitter {
     } else if (pair.links[+isInitiator]) return
 
     this._pairing.add(keyString)
+    this._server.stats.pairings.requested++
 
     pair.links[+isInitiator] = new BlindRelayLink(this, isInitiator, remoteId)
 
     if (!pair.paired) return
 
     this._server._pairing.delete(keyString)
+    this._server.stats.pairings.matched++
 
     // 1st pass: Create the raw streams needed for each end of the link.
     for (const link of pair.links) {
@@ -179,6 +211,7 @@ class BlindRelaySession extends EventEmitter {
         if (link) link.session._pairing.delete(keyString)
       }
 
+      this._server.stats.pairings.cancelled++
       return this._server._pairing.delete(keyString)
     }
 
@@ -186,6 +219,7 @@ class BlindRelaySession extends EventEmitter {
 
     if (link) {
       link.destroyPair(errors.PAIRING_CANCELLED())
+      this._server.stats.pairings.cancelled++
     }
   }
 
@@ -265,12 +299,14 @@ class BlindRelayLink {
       this.stream = null
       unlink(this)
       this.session._links.delete(keyString)
+      this.session._server.stats.streams.closed++
     }
 
     stream.on('error', this.session._onerror).on('close', this._onclose).relayTo(this.remote.stream)
 
     this.session._pairing.delete(keyString)
     this.session._links.set(keyString, this)
+    this.session._server.stats.streams.opened++
   }
 
   destroy(err) {
@@ -286,6 +322,7 @@ class BlindRelayLink {
     stream.off('error', this.session._onerror)
     unlink(this)
     this.session._links.delete(this.keyString)
+    this.session._server.stats.streams.closed++
     stream.on('error', noop).destroy(err)
   }
 
@@ -502,6 +539,61 @@ function unlink(link) {
   if (remote && remote.remote === link) {
     remote.remote = null
   }
+}
+
+function createStats(server) {
+  const stats = {
+    sessions: {
+      accepted: 0,
+      opened: 0,
+      closed: 0
+    },
+    pairings: {
+      requested: 0,
+      matched: 0,
+      cancelled: 0
+    },
+    streams: {
+      opened: 0,
+      closed: 0,
+      errors: 0
+    }
+  }
+
+  Object.defineProperties(stats.sessions, {
+    active: {
+      enumerable: true,
+      get() {
+        return server._sessions.size
+      }
+    }
+  })
+
+  Object.defineProperties(stats.pairings, {
+    pending: {
+      enumerable: true,
+      get() {
+        return server._pairing.size
+      }
+    },
+    active: {
+      enumerable: true,
+      get() {
+        return server._activePairings()
+      }
+    }
+  })
+
+  Object.defineProperties(stats.streams, {
+    active: {
+      enumerable: true,
+      get() {
+        return server._activeStreams()
+      }
+    }
+  })
+
+  return stats
 }
 
 const m = (exports.messages = {})
