@@ -267,10 +267,7 @@ class BlindRelayLink {
       this.session._streams.delete(keyString)
     }
 
-    stream
-      .on('error', this.session._onerror)
-      .on('close', this._onclose)
-      .relayTo(this.remote.stream)
+    stream.on('error', this.session._onerror).on('close', this._onclose).relayTo(this.remote.stream)
 
     this.session._pairing.delete(keyString)
     this.session._streams.set(keyString, this)
