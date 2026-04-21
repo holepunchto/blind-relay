@@ -1,5 +1,6 @@
 import test from 'brittle'
 import UDX from 'udx-native'
+import { once } from 'bare-events'
 
 import relay from './index.js'
 import { withSocket, withServer, withClient } from './test/helpers.js'
@@ -118,10 +119,10 @@ test('one-sided unpair closes both active relay streams', { timeout: 5000 }, asy
   const requestB = clientB.pair(false, token, createStream())
 
   const [pairA, pairB] = await Promise.all([
-    onceEvent(sessionA, 'pair'),
-    onceEvent(sessionB, 'pair'),
-    onceData(requestA),
-    onceData(requestB)
+    once(sessionA, 'pair'),
+    once(sessionB, 'pair'),
+    once(requestA, 'data'),
+    once(requestB, 'data')
   ])
 
   t.pass('pair became active')
@@ -129,8 +130,8 @@ test('one-sided unpair closes both active relay streams', { timeout: 5000 }, asy
   const relayStreamA = pairA[2]
   const relayStreamB = pairB[2]
 
-  const closedA = onceEvent(relayStreamA, 'close')
-  const closedB = onceEvent(relayStreamB, 'close')
+  const closedA = onceClose(relayStreamA)
+  const closedB = onceClose(relayStreamB)
 
   relayStreamA.on('error', noop)
   relayStreamB.on('error', noop)
@@ -143,15 +144,9 @@ test('one-sided unpair closes both active relay streams', { timeout: 5000 }, asy
   t.pass('unpair closed both active relay streams')
 })
 
-function onceEvent(emitter, event) {
-  return new Promise((resolve) => emitter.once(event, (...args) => resolve(args)))
-}
-
-function onceData(stream) {
-  return new Promise((resolve, reject) => {
-    stream.once('error', reject)
-    stream.once('data', resolve)
-  })
+function onceClose(stream) {
+  // bare-events.once('close') rejects on a prior error, but here we only care that shutdown completes.
+  return new Promise((resolve) => stream.once('close', resolve))
 }
 
 function noop() {}
