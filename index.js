@@ -76,7 +76,7 @@ class BlindRelaySession extends EventEmitter {
     this._destroyed = false
     this._error = null
     this._pairing = new Set()
-    this._streams = new Map()
+    this._links = new Map()
 
     this._onerror = (err) => this.emit('error', err)
 
@@ -108,12 +108,12 @@ class BlindRelaySession extends EventEmitter {
       this._server._pairing.delete(token.toString('hex'))
     }
 
-    for (const stream of this._streams.values()) {
-      stream.off('error', this._onerror).on('error', noop).destroy(err)
+    for (const link of this._links.values()) {
+      link.destroy(err)
     }
 
     this._pairing.clear()
-    this._streams.clear()
+    this._links.clear()
 
     this._server._sessions.delete(this)
 
@@ -149,16 +149,9 @@ class BlindRelaySession extends EventEmitter {
     }
 
     // 2nd pass: Connect the raw streams and set up handlers.
-    for (const { isInitiator, session, stream } of pair.links) {
-      const remote = pair.remote(isInitiator)
-
-      stream
-        .on('error', session._onerror)
-        .on('close', () => session._streams.delete(keyString))
-        .relayTo(remote.stream)
-
-      session._pairing.delete(keyString)
-      session._streams.set(keyString, stream)
+    for (const link of pair.links) {
+      link.remote = pair.remote(link.isInitiator)
+      link.activate(keyString)
     }
 
     // 3rd pass: Let either end of the link know the streams were set up.
@@ -189,12 +182,10 @@ class BlindRelaySession extends EventEmitter {
       return this._server._pairing.delete(keyString)
     }
 
-    const stream = this._streams.get(keyString)
+    const link = this._links.get(keyString)
 
-    if (stream) {
-      stream.off('error', this._onerror).on('error', noop).destroy(errors.PAIRING_CANCELLED())
-
-      this._streams.delete(keyString)
+    if (link) {
+      link.destroyPair(errors.PAIRING_CANCELLED())
     }
   }
 
@@ -251,6 +242,9 @@ class BlindRelayLink {
     this.isInitiator = isInitiator
     this.remoteId = remoteId
     this.stream = null
+    this.remote = null
+    this.keyString = null
+    this._onclose = null
   }
 
   createStream() {
@@ -259,6 +253,47 @@ class BlindRelayLink {
     this.stream = this.session._server._createStream({
       firewall: this._onfirewall.bind(this)
     })
+  }
+
+  activate(keyString) {
+    const stream = this.stream
+
+    this.keyString = keyString
+    this._onclose = () => {
+      if (this.stream !== stream) return
+
+      this.stream = null
+      unlink(this)
+      this.session._links.delete(keyString)
+    }
+
+    stream.on('error', this.session._onerror).on('close', this._onclose).relayTo(this.remote.stream)
+
+    this.session._pairing.delete(keyString)
+    this.session._links.set(keyString, this)
+  }
+
+  destroy(err) {
+    const stream = this.stream
+
+    if (!stream) return
+
+    this.stream = null
+
+    stream.off('close', this._onclose)
+    this._onclose = null
+
+    stream.off('error', this.session._onerror)
+    unlink(this)
+    this.session._links.delete(this.keyString)
+    stream.on('error', noop).destroy(err)
+  }
+
+  destroyPair(err) {
+    const remote = this.remote
+
+    this.destroy(err)
+    if (remote) remote.destroy(err)
   }
 
   _onfirewall(socket, port, host) {
@@ -458,6 +493,16 @@ exports.token = function token(buf = b4a.allocUnsafe(32)) {
 }
 
 function noop() {}
+
+function unlink(link) {
+  const remote = link.remote
+
+  link.remote = null
+
+  if (remote && remote.remote === link) {
+    remote.remote = null
+  }
+}
 
 const m = (exports.messages = {})
 
