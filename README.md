@@ -56,6 +56,16 @@ All types are specified as their corresponding [compact-encoding](https://github
 1.  `bitfield(0)` Flags, reserved.
 2.  `fixed32` Preexchanged token.
 
+## Stats
+
+Relay servers expose in-memory stats on `server.stats`.
+
+- `sessions.accepted`, `sessions.opened`, `sessions.closed`, `sessions.active`
+- `pairings.requested`, `pairings.matched`, `pairings.cancelled`, `pairings.pending`, `pairings.active`
+- `streams.opened`, `streams.closed`, `streams.errors`, `streams.active`
+
+All counters are cumulative for the lifetime of the process, while `active` and `pending` values reflect the current relay state.
+
 ## License
 
 Apache-2.0
