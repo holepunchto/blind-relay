@@ -186,7 +186,7 @@ test('stats: matched pairings and relayed streams', async (t) => {
   const requestA = clientA.pair(true, token, streamA)
   const requestB = clientB.pair(false, token, streamB)
 
-  await Promise.all([onceData(requestA), onceData(requestB)])
+  await Promise.all([once(requestA, 'data'), once(requestB, 'data')])
 
   t.alike(server.stats.pairings, {
     requested: 2,
@@ -264,7 +264,7 @@ test('stats: cancelled active pairings', async (t) => {
   const requestA = clientA.pair(true, token, streamA)
   const requestB = clientB.pair(false, token, streamB)
 
-  await Promise.all([onceData(requestA), onceData(requestB)])
+  await Promise.all([once(requestA, 'data'), once(requestB, 'data')])
 
   t.alike(server.stats.pairings, {
     requested: 2,
@@ -315,7 +315,7 @@ test('stats: stream errors', async (t) => {
   const requestA = clientA.pair(true, token, streamA)
   const requestB = clientB.pair(false, token, streamB)
 
-  await Promise.all([onceData(requestA), onceData(requestB), pairedOnServer])
+  await Promise.all([once(requestA, 'data'), once(requestB, 'data'), pairedOnServer])
 
   const [, , relayStream] = await pairedOnServer
   const err = new Error('boom')
@@ -343,13 +343,6 @@ async function waitFor(check, { timeout = 1000, interval = 10 } = {}) {
 function onceClose(stream) {
   // bare-events.once('close') rejects on a prior error, but here we only care that shutdown completes.
   return new Promise((resolve) => stream.once('close', resolve))
-}
-
-function onceData(stream) {
-  return new Promise((resolve, reject) => {
-    stream.once('error', reject)
-    stream.once('data', resolve)
-  })
 }
 
 function noop() {}
