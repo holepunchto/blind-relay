@@ -76,7 +76,7 @@ class BlindRelaySession extends EventEmitter {
     this._destroyed = false
     this._error = null
     this._pairing = new Set()
-    this._streams = new Map()
+    this._links = new Map()
 
     this._onerror = (err) => this.emit('error', err)
 
@@ -108,12 +108,12 @@ class BlindRelaySession extends EventEmitter {
       this._server._pairing.delete(token.toString('hex'))
     }
 
-    for (const link of this._streams.values()) {
+    for (const link of this._links.values()) {
       link.destroy(err)
     }
 
     this._pairing.clear()
-    this._streams.clear()
+    this._links.clear()
 
     this._server._sessions.delete(this)
 
@@ -182,7 +182,7 @@ class BlindRelaySession extends EventEmitter {
       return this._server._pairing.delete(keyString)
     }
 
-    const link = this._streams.get(keyString)
+    const link = this._links.get(keyString)
 
     if (link) {
       link.destroyPair(errors.PAIRING_CANCELLED())
@@ -264,13 +264,13 @@ class BlindRelayLink {
 
       this.stream = null
       unlink(this)
-      this.session._streams.delete(keyString)
+      this.session._links.delete(keyString)
     }
 
     stream.on('error', this.session._onerror).on('close', this._onclose).relayTo(this.remote.stream)
 
     this.session._pairing.delete(keyString)
-    this.session._streams.set(keyString, this)
+    this.session._links.set(keyString, this)
   }
 
   destroy(err) {
@@ -280,14 +280,12 @@ class BlindRelayLink {
 
     this.stream = null
 
-    if (this._onclose) {
-      stream.off('close', this._onclose)
-      this._onclose = null
-    }
+    stream.off('close', this._onclose)
+    this._onclose = null
 
     stream.off('error', this.session._onerror)
     unlink(this)
-    this.session._streams.delete(this.keyString)
+    this.session._links.delete(this.keyString)
     stream.on('error', noop).destroy(err)
   }
 
