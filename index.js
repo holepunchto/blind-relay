@@ -16,8 +16,9 @@ exports.Server = class BlindRelayServer extends EventEmitter {
 
     this._createStream = createStream
     this._pairing = new Map()
+    this._activePairingRefs = new Map()
     this._sessions = new Set()
-    this.stats = createStats(this)
+    this.stats = createStats()
   }
 
   get sessions() {
@@ -29,6 +30,7 @@ exports.Server = class BlindRelayServer extends EventEmitter {
 
     this._sessions.add(session)
     this.stats.sessions.accepted++
+    this.stats.sessions.active++
 
     return session
   }
@@ -45,26 +47,28 @@ exports.Server = class BlindRelayServer extends EventEmitter {
     this._pairing.clear()
   }
 
-  _activePairings() {
-    const active = new Set()
+  _trackActiveLink(keyString) {
+    const refs = this._activePairingRefs.get(keyString) || 0
 
-    for (const session of this._sessions) {
-      for (const token of session._links.keys()) {
-        active.add(token)
-      }
-    }
+    if (refs === 0) this.stats.pairings.active++
 
-    return active.size
+    this._activePairingRefs.set(keyString, refs + 1)
+    this.stats.streams.active++
   }
 
-  _activeStreams() {
-    let active = 0
+  _untrackActiveLink(keyString) {
+    const refs = this._activePairingRefs.get(keyString)
 
-    for (const session of this._sessions) {
-      active += session._links.size
+    if (refs === undefined) return
+
+    if (refs === 1) {
+      this._activePairingRefs.delete(keyString)
+      this.stats.pairings.active--
+    } else {
+      this._activePairingRefs.set(keyString, refs - 1)
     }
 
-    return active
+    this.stats.streams.active--
   }
 }
 
@@ -134,7 +138,9 @@ class BlindRelaySession extends EventEmitter {
     this._server.stats.pairings.cancelled += this._pairing.size
 
     for (const token of this._pairing) {
-      this._server._pairing.delete(token.toString('hex'))
+      if (this._server._pairing.delete(token.toString('hex'))) {
+        this._server.stats.pairings.pending--
+      }
     }
 
     for (const link of this._links.values()) {
@@ -146,6 +152,7 @@ class BlindRelaySession extends EventEmitter {
 
     this._server._sessions.delete(this)
     this._server.stats.sessions.closed++
+    this._server.stats.sessions.active--
 
     this.emit('close')
   }
@@ -163,6 +170,7 @@ class BlindRelaySession extends EventEmitter {
     if (pair === undefined) {
       pair = new BlindRelayPair(token)
       this._server._pairing.set(keyString, pair)
+      this._server.stats.pairings.pending++
     } else if (pair.links[+isInitiator]) return
 
     this._pairing.add(keyString)
@@ -173,6 +181,7 @@ class BlindRelaySession extends EventEmitter {
     if (!pair.paired) return
 
     this._server._pairing.delete(keyString)
+    this._server.stats.pairings.pending--
     this._server.stats.pairings.matched++
 
     // 1st pass: Create the raw streams needed for each end of the link.
@@ -211,8 +220,10 @@ class BlindRelaySession extends EventEmitter {
         if (link) link.session._pairing.delete(keyString)
       }
 
+      this._server._pairing.delete(keyString)
+      this._server.stats.pairings.pending--
       this._server.stats.pairings.cancelled++
-      return this._server._pairing.delete(keyString)
+      return
     }
 
     const link = this._links.get(keyString)
@@ -299,6 +310,7 @@ class BlindRelayLink {
       this.stream = null
       unlink(this)
       this.session._links.delete(keyString)
+      this.session._server._untrackActiveLink(keyString)
       this.session._server.stats.streams.closed++
     }
 
@@ -306,6 +318,7 @@ class BlindRelayLink {
 
     this.session._pairing.delete(keyString)
     this.session._links.set(keyString, this)
+    this.session._server._trackActiveLink(keyString)
     this.session._server.stats.streams.opened++
   }
 
@@ -322,6 +335,7 @@ class BlindRelayLink {
     stream.off('error', this.session._onerror)
     unlink(this)
     this.session._links.delete(this.keyString)
+    this.session._server._untrackActiveLink(this.keyString)
     this.session._server.stats.streams.closed++
     stream.on('error', noop).destroy(err)
   }
@@ -541,57 +555,28 @@ function unlink(link) {
   }
 }
 
-function createStats(server) {
+function createStats() {
   const stats = {
     sessions: {
       accepted: 0,
       opened: 0,
-      closed: 0
+      closed: 0,
+      active: 0
     },
     pairings: {
       requested: 0,
       matched: 0,
-      cancelled: 0
+      cancelled: 0,
+      pending: 0,
+      active: 0
     },
     streams: {
       opened: 0,
       closed: 0,
-      errors: 0
+      errors: 0,
+      active: 0
     }
   }
-
-  Object.defineProperties(stats.sessions, {
-    active: {
-      enumerable: true,
-      get() {
-        return server._sessions.size
-      }
-    }
-  })
-
-  Object.defineProperties(stats.pairings, {
-    pending: {
-      enumerable: true,
-      get() {
-        return server._pairing.size
-      }
-    },
-    active: {
-      enumerable: true,
-      get() {
-        return server._activePairings()
-      }
-    }
-  })
-
-  Object.defineProperties(stats.streams, {
-    active: {
-      enumerable: true,
-      get() {
-        return server._activeStreams()
-      }
-    }
-  })
 
   return stats
 }
