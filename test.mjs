@@ -340,9 +340,12 @@ test('stats: active relay stream close updates gauges', async (t) => {
   const requestA = clientA.pair(true, token, streamA)
   const requestB = clientB.pair(false, token, streamB)
 
-  await Promise.all([once(requestA, 'data'), once(requestB, 'data'), pairedOnServer])
-
-  const [, , relayStream] = await pairedOnServer
+  const [, , serverPair] = await Promise.all([
+    once(requestA, 'data'),
+    once(requestB, 'data'),
+    pairedOnServer
+  ])
+  const [, , relayStream] = serverPair
 
   t.is(server.stats.pairings.active, 1)
   t.is(server.stats.streams.active, 2)
@@ -380,9 +383,12 @@ test('stats: stream errors', async (t) => {
   const requestA = clientA.pair(true, token, streamA)
   const requestB = clientB.pair(false, token, streamB)
 
-  await Promise.all([once(requestA, 'data'), once(requestB, 'data'), pairedOnServer])
-
-  const [, , relayStream] = await pairedOnServer
+  const [, , serverPair] = await Promise.all([
+    once(requestA, 'data'),
+    once(requestB, 'data'),
+    pairedOnServer
+  ])
+  const [, , relayStream] = serverPair
   const err = new Error('boom')
 
   relayStream.emit('error', err)

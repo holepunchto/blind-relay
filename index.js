@@ -30,7 +30,6 @@ exports.Server = class BlindRelayServer extends EventEmitter {
 
     this._sessions.add(session)
     this.stats.sessions.accepted++
-    this.stats.sessions.active++
 
     return session
   }
@@ -53,7 +52,6 @@ exports.Server = class BlindRelayServer extends EventEmitter {
     if (refs === 0) this.stats.pairings.active++
 
     this._activePairingRefs.set(keyString, refs + 1)
-    this.stats.streams.active++
   }
 
   _untrackActiveLink(keyString) {
@@ -67,8 +65,6 @@ exports.Server = class BlindRelayServer extends EventEmitter {
     } else {
       this._activePairingRefs.set(keyString, refs - 1)
     }
-
-    this.stats.streams.active--
   }
 }
 
@@ -152,7 +148,6 @@ class BlindRelaySession extends EventEmitter {
 
     this._server._sessions.delete(this)
     this._server.stats.sessions.closed++
-    this._server.stats.sessions.active--
 
     this.emit('close')
   }
@@ -561,7 +556,9 @@ function createStats() {
       accepted: 0,
       opened: 0,
       closed: 0,
-      active: 0
+      get active() {
+        return this.accepted - this.closed
+      }
     },
     pairings: {
       requested: 0,
@@ -574,7 +571,9 @@ function createStats() {
       opened: 0,
       closed: 0,
       errors: 0,
-      active: 0
+      get active() {
+        return this.opened - this.closed
+      }
     }
   }
 
