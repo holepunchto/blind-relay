@@ -247,6 +247,35 @@ test('stats: cancelled pending pairings', async (t) => {
   })
 })
 
+test('stats: session close cancels pending pairings', async (t) => {
+  const udx = new UDX()
+
+  let id = 0
+  const createStream = (opts) => udx.createStream(++id, opts)
+
+  const server = withServer(t, createStream)
+  const token = relay.token()
+  const { client, session } = withClient(t, server, { withSession: true })
+  const request = client.pair(true, token, createStream())
+
+  request.on('data', noop)
+  request.on('error', noop)
+
+  await waitFor(() => server.stats.pairings.pending === 1)
+
+  const closed = once(session, 'close')
+  client.destroy()
+  await closed
+
+  t.alike(server.stats.pairings, {
+    requested: 1,
+    matched: 0,
+    cancelled: 1,
+    pending: 0,
+    active: 0
+  })
+})
+
 test('stats: cancelled active pairings', async (t) => {
   const udx = new UDX()
 
@@ -291,6 +320,45 @@ test('stats: cancelled active pairings', async (t) => {
   t.is(server.stats.streams.active, 0)
 })
 
+test('stats: active relay stream close updates gauges', async (t) => {
+  const udx = new UDX()
+
+  let id = 0
+  const createStream = (opts) => udx.createStream(++id, opts)
+
+  const server = withServer(t, createStream)
+  const token = relay.token()
+
+  const { client: clientA, session: sessionA } = withClient(t, server, {
+    withSession: true
+  })
+  const clientB = withClient(t, server)
+  const streamA = createStream()
+  const streamB = createStream()
+
+  const pairedOnServer = once(sessionA, 'pair')
+  const requestA = clientA.pair(true, token, streamA)
+  const requestB = clientB.pair(false, token, streamB)
+
+  const [, , serverPair] = await Promise.all([
+    once(requestA, 'data'),
+    once(requestB, 'data'),
+    pairedOnServer
+  ])
+  const [, , relayStream] = serverPair
+
+  t.is(server.stats.pairings.active, 1)
+  t.is(server.stats.streams.active, 2)
+
+  relayStream.on('error', noop)
+  relayStream.destroy()
+
+  await waitFor(() => server.stats.streams.closed === 1)
+
+  t.is(server.stats.streams.active, 1)
+  t.is(server.stats.pairings.active, 1)
+})
+
 test('stats: stream errors', async (t) => {
   const udx = new UDX()
 
@@ -315,9 +383,12 @@ test('stats: stream errors', async (t) => {
   const requestA = clientA.pair(true, token, streamA)
   const requestB = clientB.pair(false, token, streamB)
 
-  await Promise.all([once(requestA, 'data'), once(requestB, 'data'), pairedOnServer])
-
-  const [, , relayStream] = await pairedOnServer
+  const [, , serverPair] = await Promise.all([
+    once(requestA, 'data'),
+    once(requestB, 'data'),
+    pairedOnServer
+  ])
+  const [, , relayStream] = serverPair
   const err = new Error('boom')
 
   relayStream.emit('error', err)
