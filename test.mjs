@@ -144,6 +144,41 @@ test('one-sided unpair closes both active relay streams', { timeout: 5000 }, asy
   t.pass('unpair closed both active relay streams')
 })
 
+test('session end resolves with pending pairing', async (t) => {
+  const udx = new UDX()
+
+  let id = 0
+  const createStream = (opts) => udx.createStream(++id, opts)
+
+  const server = withServer(t, createStream)
+  const token = relay.token()
+  const { client, session } = withClient(t, server, { withSession: true })
+  const request = client.pair(true, token, createStream())
+  let paired = false
+
+  request.on('data', () => {
+    paired = true
+  })
+  request.on('error', noop)
+
+  await waitFor(() => server.stats.pairings.pending === 1)
+
+  const ending = session.end()
+  const ended = await Promise.race([
+    ending.then(() => true),
+    new Promise((resolve) => setTimeout(resolve, 1000, false))
+  ])
+
+  t.ok(ended, 'session end resolved with pending pairing')
+
+  if (!ended) client.destroy()
+  await ending
+
+  t.is(paired, false)
+  t.is(server.stats.pairings.pending, 0)
+  t.is(server.stats.pairings.cancelled, 1)
+})
+
 test('stats: session lifecycle', async (t) => {
   const udx = new UDX()
 

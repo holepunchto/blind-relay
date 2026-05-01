@@ -131,17 +131,12 @@ class BlindRelaySession extends EventEmitter {
     this._ending = Promise.resolve()
 
     const err = this._error || errors.CHANNEL_CLOSED()
-    this._server.stats.pairings.cancelled += this._pairing.size
-
-    for (const token of this._pairing) {
-      this._server._pairing.delete(token.toString('hex'))
-    }
+    this._cancelPairings()
 
     for (const link of this._links.values()) {
       link.destroy(err)
     }
 
-    this._pairing.clear()
     this._links.clear()
 
     this._server._sessions.delete(this)
@@ -195,8 +190,6 @@ class BlindRelaySession extends EventEmitter {
         seq: 0
       })
 
-      session._endMaybe()
-
       session.emit('pair', isInitiator, token, stream, remoteId)
     }
   }
@@ -235,15 +228,10 @@ class BlindRelaySession extends EventEmitter {
     if (this._ending) return this._ending
 
     this._ending = EventEmitter.once(this, 'close')
-    this._endMaybe()
+    this._cancelPairings()
+    this._channel.close()
 
     return this._ending
-  }
-
-  _endMaybe() {
-    if (this._ending && this._pairing.size === 0) {
-      this._channel.close()
-    }
   }
 
   destroy(err) {
@@ -252,6 +240,16 @@ class BlindRelaySession extends EventEmitter {
 
     this._error = err || errors.CHANNEL_DESTROYED()
     this._channel.close()
+  }
+
+  _cancelPairings() {
+    this._server.stats.pairings.cancelled += this._pairing.size
+
+    for (const token of this._pairing) {
+      this._server._pairing.delete(token.toString('hex'))
+    }
+
+    this._pairing.clear()
   }
 }
 
