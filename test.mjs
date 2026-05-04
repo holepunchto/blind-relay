@@ -383,12 +383,9 @@ test('stats: stream errors', async (t) => {
   const requestA = clientA.pair(true, token, streamA)
   const requestB = clientB.pair(false, token, streamB)
 
-  const [, , serverPair] = await Promise.all([
-    once(requestA, 'data'),
-    once(requestB, 'data'),
-    pairedOnServer
-  ])
-  const [, , relayStream] = serverPair
+  await Promise.all([once(requestA, 'data'), once(requestB, 'data')])
+
+  const [, , relayStream] = await pairedOnServer
   const err = new Error('boom')
 
   relayStream.emit('error', err)
