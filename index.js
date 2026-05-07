@@ -38,7 +38,8 @@ exports.Server = class BlindRelayServer extends EventEmitter {
     const ending = []
 
     for (const session of this._sessions) {
-      ending.push(session.end())
+      ending.push(EventEmitter.once(session, 'close'))
+      session.destroy(errors.CHANNEL_CLOSED())
     }
 
     await Promise.all(ending)
