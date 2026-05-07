@@ -1,6 +1,7 @@
 import test from 'brittle'
 import UDX from 'udx-native'
 import { once } from 'bare-events'
+import promClient from 'bare-prom-client'
 
 import relay from './index.js'
 import { withSocket, withServer, withClient } from './test/helpers.js'
@@ -395,6 +396,28 @@ test('stats: stream errors', async (t) => {
   t.is(server.stats.streams.errors, 1)
   t.is(sessionErrors.length, 1)
   t.is(sessionErrors[0], err)
+})
+
+test('Prometheus metrics', async (t) => {
+  const server = new relay.Server()
+
+  server.registerMetrics(promClient)
+  t.teardown(() => {
+    promClient.register.clear()
+  })
+
+  const metrics = await promClient.register.metrics()
+  t.ok(metrics.includes('blind_relay_sessions_accepted 0'), 'blind_relay_sessions_accepted')
+  t.ok(metrics.includes('blind_relay_sessions_opened 0'), 'blind_relay_sessions_opened')
+  t.ok(metrics.includes('blind_relay_sessions_closed 0'), 'blind_relay_sessions_closed')
+  t.ok(metrics.includes('blind_relay_pairings_requested 0'), 'blind_relay_pairings_requested')
+  t.ok(metrics.includes('blind_relay_pairings_matched 0'), 'blind_relay_pairings_matched')
+  t.ok(metrics.includes('blind_relay_pairings_cancelled 0'), 'blind_relay_pairings_cancelled')
+  t.ok(metrics.includes('blind_relay_pairings_pending 0'), 'blind_relay_pairings_pending')
+  t.ok(metrics.includes('blind_relay_pairings_active 0'), 'blind_relay_pairings_active')
+  t.ok(metrics.includes('blind_relay_streams_opened 0'), 'blind_relay_streams_opened')
+  t.ok(metrics.includes('blind_relay_streams_closed 0'), 'blind_relay_streams_closed')
+  t.ok(metrics.includes('blind_relay_streams_errors 0'), 'blind_relay_streams_errors')
 })
 
 async function waitFor(check, { timeout = 1000, interval = 10 } = {}) {
