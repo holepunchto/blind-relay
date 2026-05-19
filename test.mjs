@@ -1,4 +1,5 @@
 import test from 'brittle'
+import b4a from 'b4a'
 import UDX from 'udx-native'
 import { once } from 'bare-events'
 
@@ -16,11 +17,18 @@ test('basic', (t) => {
 
   const server = withServer(t, createStream)
   const token = relay.token()
+  // The relay-side UDX stream only gets a socket after the first packet reaches
+  // its firewall hook. Prime both sides before sending the payloads asserted here.
+  const relayConnects = []
+  const whenRelaysConnected = () => Promise.all(relayConnects)
 
   {
-    const client = withClient(t, server)
+    const { client, session } = withClient(t, server, {
+      withSession: true
+    })
     const stream = createStream()
 
+    relayConnects.push(relayConnected(session))
     client.on('pair', (...args) => t.alike(args, [true, token, stream, 4]))
 
     const request = client.pair(true, token, stream)
@@ -36,14 +44,20 @@ test('basic', (t) => {
           .on('data', (data) => t.alike(data.toString(), 'initiatee'))
           .connect(socket, remoteId, socket.address().port)
 
-        request.stream.end('initiator')
+        request.stream.trySend(b4a.alloc(0))
+        whenRelaysConnected().then(() => {
+          request.stream.end('initiator')
+        }, t.fail.bind(t))
       })
   }
 
   {
-    const client = withClient(t, server)
+    const { client, session } = withClient(t, server, {
+      withSession: true
+    })
     const stream = createStream()
 
+    relayConnects.push(relayConnected(session))
     client.on('pair', (...args) => t.alike(args, [false, token, stream, 3]))
 
     const request = client.pair(false, token, stream)
@@ -59,7 +73,10 @@ test('basic', (t) => {
           .on('data', (data) => t.alike(data.toString(), 'initiator'))
           .connect(socket, remoteId, socket.address().port)
 
-        request.stream.end('initiatee')
+        request.stream.trySend(b4a.alloc(0))
+        whenRelaysConnected().then(() => {
+          request.stream.end('initiatee')
+        }, t.fail.bind(t))
       })
   }
 })
@@ -411,6 +428,16 @@ async function waitFor(check, { timeout = 1000, interval = 10 } = {}) {
 function onceClose(stream) {
   // bare-events.once('close') rejects on a prior error, but here we only care that shutdown completes.
   return new Promise((resolve) => stream.once('close', resolve))
+}
+
+function relayConnected(session) {
+  return new Promise((resolve) => {
+    session.once('pair', (...args) => {
+      const stream = args[2]
+      if (stream.connected) return resolve()
+      stream.once('connect', resolve)
+    })
+  })
 }
 
 function noop() {}
