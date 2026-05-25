@@ -276,6 +276,40 @@ test('stats: session close cancels pending pairings', async (t) => {
   })
 })
 
+test('stats: session close tears down both active relay streams', async (t) => {
+  const udx = new UDX()
+
+  let id = 0
+  const createStream = (opts) => udx.createStream(++id, opts)
+
+  const server = withServer(t, createStream)
+  const token = relay.token()
+
+  const { client: clientA, session: sessionA } = withClient(t, server, {
+    withSession: true
+  })
+  const clientB = withClient(t, server)
+  const streamA = createStream()
+  const streamB = createStream()
+
+  const requestA = clientA.pair(true, token, streamA)
+  const requestB = clientB.pair(false, token, streamB)
+
+  await Promise.all([once(requestA, 'data'), once(requestB, 'data')])
+
+  t.is(server.stats.pairings.active, 1)
+  t.is(server.stats.streams.active, 2)
+
+  const closed = once(sessionA, 'close')
+  clientA.destroy()
+  await closed
+
+  await waitFor(() => server.stats.streams.closed === 2)
+
+  t.is(server.stats.pairings.active, 0)
+  t.is(server.stats.streams.active, 0)
+})
+
 test('stats: cancelled active pairings', async (t) => {
   const udx = new UDX()
 

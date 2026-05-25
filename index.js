@@ -139,8 +139,8 @@ class BlindRelaySession extends EventEmitter {
       }
     }
 
-    for (const link of this._links.values()) {
-      link.destroy(err)
+    for (const link of [...this._links.values()]) {
+      link.destroyPair(err)
     }
 
     this._pairing.clear()
