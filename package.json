@@ -41,6 +41,7 @@
   },
   "devDependencies": {
     "brittle": "^3.2.1",
+    "debugging-stream": "^3.1.0",
     "hyperdht": "^6.6.1",
     "lunte": "^1.0.0",
     "prettier": "^3.6.2",

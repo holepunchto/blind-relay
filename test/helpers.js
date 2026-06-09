@@ -1,5 +1,6 @@
 const { Duplex } = require('streamx')
 const relay = require('..')
+const DebuggingStream = require('debugging-stream')
 
 exports.withSocket = function withSocket(t, udx) {
   const socket = udx.createSocket()
@@ -17,20 +18,24 @@ exports.withServer = function withServer(t, createStream) {
 exports.withClient = function withClient(t, server, opts = {}) {
   const { onerror = (err) => t.fail(err), withSession = false } = opts
 
-  const serverStream = new Duplex({
+  let serverStream = new Duplex({
     write(data, cb) {
       clientStream.push(data)
       cb(null)
     }
   })
 
-  const clientStream = new Duplex({
+  let clientStream = new Duplex({
     write(data, cb) {
       serverStream.push(data)
       cb(null)
     }
   })
 
+  if (opts.debugging) {
+    serverStream = new DebuggingStream(serverStream, opts.debugging)
+    clientStream = new DebuggingStream(clientStream, opts.debugging)
+  }
   const session = server.accept(serverStream)
   session.on('error', onerror)
 
