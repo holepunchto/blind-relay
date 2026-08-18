@@ -166,7 +166,9 @@ class BlindRelaySession extends EventEmitter {
       pair = new BlindRelayPair(token)
       this._server._pairing.set(keyString, pair)
       this._server.stats.pairings.pending++
-    } else if (pair.links[+isInitiator]) return
+    } else if (pair.links[+isInitiator] || pair.links[+!isInitiator].session === this) {
+      return
+    }
 
     this._pairing.add(keyString)
     this._server.stats.pairings.requested++

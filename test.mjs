@@ -3,7 +3,7 @@ import UDX from 'udx-native'
 import { once } from 'bare-events'
 
 import relay from './index.js'
-import { withSocket, withServer, withClient } from './test/helpers.js'
+import { withSocket, withServer, withClient, withRawClient } from './test/helpers.js'
 
 test('basic', (t) => {
   t.plan(8)
@@ -142,6 +142,73 @@ test('one-sided unpair closes both active relay streams', { timeout: 5000 }, asy
   await Promise.all([closedA, closedB])
 
   t.pass('unpair closed both active relay streams')
+})
+
+test('a session claiming both ends of a token relays nothing', async (t) => {
+  const udx = new UDX()
+
+  let id = 0
+  const created = []
+  const createStream = (opts) => {
+    const stream = udx.createStream(++id, opts)
+    created.push(stream)
+    return stream
+  }
+
+  const server = withServer(t, createStream)
+  const { session, pair, stream } = withRawClient(t, server)
+  const token = relay.token()
+
+  pair.send({ isInitiator: true, token, id: 5001, seq: 0 })
+  pair.send({ isInitiator: false, token, id: 5002, seq: 0 })
+
+  // A regression matches both roles instead of one, so report it as a failed
+  // assertion rather than letting the wait abort the run.
+  await waitFor(() => server.stats.pairings.requested === 1).catch(noop)
+
+  t.is(created.length, 0, 'no relay streams allocated')
+  t.is(server.stats.pairings.matched, 0)
+  t.is(server.stats.pairings.pending, 1)
+
+  stream.destroy()
+  await once(session, 'close')
+
+  t.is(server.stats.pairings.active, 0)
+  t.is(server.stats.streams.active, 0)
+  t.is(server._activePairingRefs.size, 0, 'no leaked pairing refs')
+})
+
+test('leaked streams accumulate across sessions', async (t) => {
+  const udx = new UDX()
+
+  let id = 0
+  const created = []
+  const createStream = (opts) => {
+    const stream = udx.createStream(++id, opts)
+    created.push(stream)
+    return stream
+  }
+
+  const server = withServer(t, createStream)
+  const rounds = 10
+
+  for (let i = 0; i < rounds; i++) {
+    const { session, pair, stream } = withRawClient(t, server)
+    const token = relay.token()
+
+    pair.send({ isInitiator: true, token, id: 6000 + i * 2, seq: 0 })
+    pair.send({ isInitiator: false, token, id: 6001 + i * 2, seq: 0 })
+
+    await waitFor(() => server.stats.pairings.requested >= i + 1).catch(noop)
+
+    stream.destroy()
+    await once(session, 'close')
+  }
+
+  t.is(created.filter((stream) => !stream.destroyed).length, 0, 'no leaked relay streams')
+  t.is(server.stats.streams.active, 0)
+  t.is(server.stats.pairings.active, 0)
+  t.is(server._activePairingRefs.size, 0)
 })
 
 test('stats: session lifecycle', async (t) => {
