@@ -258,7 +258,8 @@ test('active token cannot create another pending pair', async (t) => {
 
   const probeToken = relay.token()
   const probeC = peerC.pair(true, probeToken, createStream())
-  probeC.on('error', noop).on('data', noop)
+  const probeError = new Promise((resolve) => probeC.once('error', resolve))
+  probeC.on('data', noop)
   await waitFor(() => server._pairing.has(probeToken.toString('hex')))
 
   t.is(
@@ -268,6 +269,8 @@ test('active token cannot create another pending pair', async (t) => {
   )
 
   peerC.unpair(probeToken)
+  const err = await probeError
+  t.is(err.code, 'PAIRING_CANCELLED', 'probe request was cancelled as expected')
   await waitFor(() => !server._pairing.has(probeToken.toString('hex')))
   retryC.destroy()
 
