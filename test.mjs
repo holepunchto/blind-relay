@@ -178,7 +178,7 @@ test('a session claiming both ends of a token relays nothing', async (t) => {
   t.is(server._activePairingRefs.size, 0, 'no leaked pairing refs')
 })
 
-test('leaked streams accumulate across sessions', async (t) => {
+test('no leaked streams accumulated across sessions', async (t) => {
   const udx = new UDX()
 
   let id = 0
