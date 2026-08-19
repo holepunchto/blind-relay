@@ -3,7 +3,7 @@ import UDX from 'udx-native'
 import { once } from 'bare-events'
 
 import relay from './index.js'
-import { withSocket, withServer, withClient } from './test/helpers.js'
+import { withSocket, withServer, withClient, withRawClient } from './test/helpers.js'
 
 test('basic', (t) => {
   t.plan(8)
@@ -142,6 +142,165 @@ test('one-sided unpair closes both active relay streams', { timeout: 5000 }, asy
   await Promise.all([closedA, closedB])
 
   t.pass('unpair closed both active relay streams')
+})
+
+test('self-claim does not poison a pending pair', async (t) => {
+  const udx = new UDX()
+  const relayStreams = []
+  let id = 0
+
+  const server = withServer(t, (opts) => {
+    const stream = udx.createStream(++id, opts)
+    relayStreams.push(stream)
+    return stream
+  })
+  const peerA = withRawClient(t, server)
+  const peerB = withRawClient(t, server)
+  const token = relay.token()
+  const probeA = relay.token()
+  const probeB = relay.token()
+
+  peerA.pair.send({ isInitiator: true, token, id: 5001, seq: 0 })
+  peerA.pair.send({ isInitiator: false, token, id: 5002, seq: 0 })
+  peerA.pair.send({ isInitiator: true, token: probeA, id: 5003, seq: 0 })
+  await waitFor(() => server._pairing.has(probeA.toString('hex')))
+
+  t.is(relayStreams.length, 0, 'self-claim allocated no relay streams')
+
+  peerB.pair.send({ isInitiator: false, token, id: 5004, seq: 0 })
+  peerB.pair.send({ isInitiator: true, token: probeB, id: 5005, seq: 0 })
+  await waitFor(() => server._pairing.has(probeB.toString('hex')))
+
+  t.is(relayStreams.length, 2, 'another session completed the pending pair')
+
+  const closedA = once(peerA.session, 'close')
+  const closedB = once(peerB.session, 'close')
+  peerA.stream.destroy()
+  peerB.stream.destroy()
+  await Promise.all([closedA, closedB])
+
+  t.is(
+    relayStreams.filter((stream) => !stream.destroyed).length,
+    0,
+    'all relay streams were reclaimed'
+  )
+  destroyAll(relayStreams)
+})
+
+test('active token reuse does not replace relay links', async (t) => {
+  const udx = new UDX()
+  const relayStreams = []
+  let id = 0
+
+  const createStream = (opts) => udx.createStream(++id, opts)
+  const server = withServer(t, (opts) => {
+    const stream = createStream(opts)
+    relayStreams.push(stream)
+    return stream
+  })
+  const peerA = withClient(t, server, { withSession: true })
+  const peerB = withClient(t, server, { withSession: true })
+  const token = relay.token()
+
+  const firstA = peerA.client.pair(true, token, createStream())
+  const firstB = peerB.client.pair(false, token, createStream())
+  await Promise.all([once(firstA, 'data'), once(firstB, 'data')])
+
+  const retryA = peerA.client.pair(true, token, createStream())
+  const retryB = peerB.client.pair(false, token, createStream())
+  const openedA = once(retryA, 'open')
+  const openedB = once(retryB, 'open')
+  retryA.on('data', noop)
+  retryB.on('data', noop)
+  await Promise.all([openedA, openedB])
+
+  const probeToken = relay.token()
+  const probeA = peerA.client.pair(true, probeToken, createStream())
+  const probeB = peerB.client.pair(false, probeToken, createStream())
+  await Promise.all([once(probeA, 'data'), once(probeB, 'data')])
+
+  t.is(relayStreams.length, 4, 'active token was not paired again')
+
+  retryA.destroy()
+  retryB.destroy()
+
+  const closedA = once(peerA.session, 'close')
+  const closedB = once(peerB.session, 'close')
+  await Promise.all([peerA.client.end(), peerB.client.end(), closedA, closedB])
+
+  t.is(
+    relayStreams.filter((stream) => !stream.destroyed).length,
+    0,
+    'all relay streams were reclaimed'
+  )
+  destroyAll(relayStreams)
+})
+
+test('active token cannot create another pending pair', async (t) => {
+  const udx = new UDX()
+  let id = 0
+
+  const createStream = (opts) => udx.createStream(++id, opts)
+  const server = withServer(t, createStream)
+  const peerA = withClient(t, server)
+  const peerB = withClient(t, server)
+  const peerC = withClient(t, server)
+  const token = relay.token()
+
+  const firstA = peerA.pair(true, token, createStream())
+  const firstB = peerB.pair(false, token, createStream())
+  await Promise.all([once(firstA, 'data'), once(firstB, 'data')])
+
+  const retryC = peerC.pair(true, token, createStream())
+  const openedC = once(retryC, 'open')
+  retryC.on('data', noop)
+  await openedC
+
+  const probeToken = relay.token()
+  const probeC = peerC.pair(true, probeToken, createStream())
+  probeC.on('error', noop).on('data', noop)
+  await waitFor(() => server._pairing.has(probeToken.toString('hex')))
+
+  t.is(
+    server._pairing.has(token.toString('hex')),
+    false,
+    'active token was not accepted as pending'
+  )
+
+  peerC.unpair(probeToken)
+  await waitFor(() => !server._pairing.has(probeToken.toString('hex')))
+  retryC.destroy()
+
+  const cancelled = server.stats.pairings.cancelled
+  peerA.unpair(token)
+  await waitFor(() => server.stats.pairings.cancelled === cancelled + 1)
+
+  t.is(server.stats.pairings.active, 0, 'unpair removed the active pair')
+})
+
+test('token can be reused after unpairing', async (t) => {
+  const udx = new UDX()
+  let id = 0
+
+  const createStream = (opts) => udx.createStream(++id, opts)
+  const server = withServer(t, createStream)
+  const peerA = withClient(t, server)
+  const peerB = withClient(t, server)
+  const token = relay.token()
+
+  const firstA = peerA.pair(true, token, createStream())
+  const firstB = peerB.pair(false, token, createStream())
+  await Promise.all([once(firstA, 'data'), once(firstB, 'data')])
+  await waitFor(() => [...peerA.requests].length === 0 && [...peerB.requests].length === 0)
+
+  peerA.unpair(token)
+  await waitFor(() => server.stats.pairings.active === 0)
+
+  const secondA = peerA.pair(true, token, createStream())
+  const secondB = peerB.pair(false, token, createStream())
+  await Promise.all([once(secondA, 'data'), once(secondB, 'data')])
+
+  t.is(server.stats.pairings.matched, 2)
 })
 
 test('stats: session lifecycle', async (t) => {
@@ -411,6 +570,12 @@ async function waitFor(check, { timeout = 1000, interval = 10 } = {}) {
 function onceClose(stream) {
   // bare-events.once('close') rejects on a prior error, but here we only care that shutdown completes.
   return new Promise((resolve) => stream.once('close', resolve))
+}
+
+function destroyAll(streams) {
+  for (const stream of streams) {
+    if (!stream.destroyed) stream.on('error', noop).destroy()
+  }
 }
 
 function noop() {}

@@ -160,6 +160,8 @@ class BlindRelaySession extends EventEmitter {
   _onpair({ isInitiator, token, id: remoteId }) {
     const keyString = token.toString('hex')
 
+    if (this._pairing.has(keyString) || this._server._activePairingRefs.has(keyString)) return
+
     let pair = this._server._pairing.get(keyString)
 
     if (pair === undefined) {

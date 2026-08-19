@@ -1,4 +1,5 @@
 const { Duplex } = require('streamx')
+const Protomux = require('protomux')
 const relay = require('..')
 
 exports.withSocket = function withSocket(t, udx) {
@@ -38,3 +39,40 @@ exports.withClient = function withClient(t, server, opts = {}) {
   t.teardown(() => client.end(), { order: 1 })
   return withSession ? { client, session } : client
 }
+
+exports.withRawClient = function withRawClient(t, server) {
+  const serverStream = new Duplex({
+    write(data, cb) {
+      clientStream.push(data)
+      cb(null)
+    },
+    destroy(cb) {
+      clientStream.destroy()
+      cb(null)
+    }
+  })
+
+  const clientStream = new Duplex({
+    write(data, cb) {
+      serverStream.push(data)
+      cb(null)
+    },
+    destroy(cb) {
+      serverStream.destroy()
+      cb(null)
+    }
+  })
+
+  const session = server.accept(serverStream)
+  session.on('error', (err) => t.fail(err))
+
+  const channel = Protomux.from(clientStream).createChannel({ protocol: 'blind-relay' })
+  const pair = channel.addMessage({ encoding: relay.messages.pair, onmessage: noop })
+
+  channel.open()
+  t.teardown(() => clientStream.destroy(), { order: 1 })
+
+  return { session, pair, stream: clientStream }
+}
+
+function noop() {}
