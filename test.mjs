@@ -276,7 +276,7 @@ test('stats: session close cancels pending pairings', async (t) => {
   })
 })
 
-test('stats: session close tears down both active relay streams', async (t) => {
+test('stats: session close tears down both active relay streams', { timeout: 5000 }, async (t) => {
   const udx = new UDX()
 
   let id = 0
@@ -288,23 +288,75 @@ test('stats: session close tears down both active relay streams', async (t) => {
   const { client: clientA, session: sessionA } = withClient(t, server, {
     withSession: true
   })
-  const clientB = withClient(t, server)
+  const { client: clientB, session: sessionB } = withClient(t, server, {
+    withSession: true
+  })
   const streamA = createStream()
   const streamB = createStream()
 
+  const pairedA = once(sessionA, 'pair')
+  const pairedB = once(sessionB, 'pair')
   const requestA = clientA.pair(true, token, streamA)
   const requestB = clientB.pair(false, token, streamB)
 
-  await Promise.all([once(requestA, 'data'), once(requestB, 'data')])
+  const [pairA, pairB] = await Promise.all([
+    pairedA,
+    pairedB,
+    once(requestA, 'data'),
+    once(requestB, 'data')
+  ])
 
   t.is(server.stats.pairings.active, 1)
   t.is(server.stats.streams.active, 2)
 
-  const closed = once(sessionA, 'close')
+  const closed = Promise.all([once(sessionA, 'close'), onceClose(pairA[2]), onceClose(pairB[2])])
   clientA.destroy()
   await closed
 
-  await waitFor(() => server.stats.streams.closed === 2)
+  t.is(server.stats.pairings.active, 0)
+  t.is(server.stats.streams.active, 0)
+})
+
+test('stats: session close tears down a half-closed active pair', { timeout: 5000 }, async (t) => {
+  const udx = new UDX()
+
+  let id = 0
+  const createStream = (opts) => udx.createStream(++id, opts)
+
+  const server = withServer(t, createStream)
+  const token = relay.token()
+
+  const { client: clientA, session: sessionA } = withClient(t, server, {
+    withSession: true
+  })
+  const { client: clientB, session: sessionB } = withClient(t, server, {
+    withSession: true
+  })
+
+  const pairedA = once(sessionA, 'pair')
+  const pairedB = once(sessionB, 'pair')
+  const requestA = clientA.pair(true, token, createStream())
+  const requestB = clientB.pair(false, token, createStream())
+
+  const [pairA, pairB] = await Promise.all([
+    pairedA,
+    pairedB,
+    once(requestA, 'data'),
+    once(requestB, 'data')
+  ])
+  const relayStreamA = pairA[2]
+  const relayStreamB = pairB[2]
+
+  const relayAClosed = onceClose(relayStreamA)
+  relayStreamA.destroy()
+  await relayAClosed
+
+  t.is(server.stats.pairings.active, 1)
+  t.is(server.stats.streams.active, 1)
+
+  const closed = Promise.all([once(sessionA, 'close'), onceClose(relayStreamB)])
+  clientA.destroy()
+  await closed
 
   t.is(server.stats.pairings.active, 0)
   t.is(server.stats.streams.active, 0)

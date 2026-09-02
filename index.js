@@ -303,10 +303,16 @@ class BlindRelayLink {
       if (this.stream !== stream) return
 
       this.stream = null
-      unlink(this)
-      this.session._links.delete(keyString)
+      stream.off('close', this._onclose)
+      stream.off('error', this.session._onerror)
+      this._onclose = null
       this.session._server._untrackActiveLink(keyString)
       this.session._server.stats.streams.closed++
+
+      // Keep the link reachable while its remote half is still active.
+      if (this.remote !== null && this.remote.stream !== null) return
+
+      this.destroyPair()
     }
 
     stream.on('error', this.session._onerror).on('close', this._onclose).relayTo(this.remote.stream)
@@ -320,7 +326,11 @@ class BlindRelayLink {
   destroy(err) {
     const stream = this.stream
 
-    if (!stream) return
+    if (!stream) {
+      unlink(this)
+      this._remove()
+      return
+    }
 
     this.stream = null
 
@@ -329,10 +339,16 @@ class BlindRelayLink {
 
     stream.off('error', this.session._onerror)
     unlink(this)
-    this.session._links.delete(this.keyString)
+    this._remove()
     this.session._server._untrackActiveLink(this.keyString)
     this.session._server.stats.streams.closed++
     stream.on('error', noop).destroy(err)
+  }
+
+  _remove() {
+    if (this.session._links.get(this.keyString) === this) {
+      this.session._links.delete(this.keyString)
+    }
   }
 
   destroyPair(err) {
