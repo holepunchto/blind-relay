@@ -43,6 +43,8 @@ sequenceDiagram
 
 All types are specified as their corresponding [compact-encoding](https://github.com/compact-encoding) codec.
 
+A token identifies one pending or active pairing at a time. It may be reused after that pairing is cancelled or closed.
+
 #### `pair` (`0`)
 
 1.  `bitfield(1)` Flags.
